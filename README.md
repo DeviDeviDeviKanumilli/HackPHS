@@ -29,10 +29,10 @@ npm install
    - Create `.env.local` file in the root directory
    - Add the following variables (NO SPACES after the equals sign):
    ```
-   MONGODB_URI=mongodb+srv://kanumilliashrith020_db_user:Xl1ElUrM56Y2neLu@cluster0.pkrxw55.mongodb.net/?appName=Cluster0
-   NEXTAUTH_URL=http://localhost:3000
-   NEXTAUTH_SECRET=3HDu5/zSAT/cdPt+fSH4jobUH/023GYt4CFTznLxOcE=
-   GOOGLE_MAPS_API_KEY=AIzaSyBbzFrVHNM5VQ7yOvVpUVBSRHANqVnDbEI
+   MONGODB_URI=mongodb+srv:
+   NEXTAUTH_URL=
+   NEXTAUTH_SECRET=
+   GOOGLE_MAPS_API_KEY= 
    ```
    - Generate a NextAuth secret: `openssl rand -base64 32`
    - Get MongoDB Atlas connection string from [MongoDB Atlas](https://www.mongodb.com/cloud/atlas)
