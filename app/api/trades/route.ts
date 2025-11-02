@@ -1,12 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/db';
-import { requireAuth } from '@/lib/auth';
+import { getCurrentUser, requireAuth } from '@/lib/auth';
 import { getCoordinatesFromZip, calculateDistance } from '@/lib/geocoding';
 import { apiCache, getCacheTTL, generateKey } from '@/lib/apiCache';
+import { formatTradeResponse, TradeWithRelations } from '@/lib/tradeFormatter';
+import { tradeInclude } from '@/lib/tradeIncludes';
 
 // Invalidate cache when trades are created/updated
-function invalidateTradeCache() {
-  apiCache.invalidate('/api/trades');
+async function invalidateTradeCache() {
+  await apiCache.invalidate('/api/trades');
 }
 
 export async function GET(request: NextRequest) {
@@ -23,7 +25,7 @@ export async function GET(request: NextRequest) {
     const cacheKey = generateKey(url.pathname, Object.fromEntries(searchParams.entries()));
     if (!zipCode && !lat) {
       // Only cache non-location queries
-      const cached = apiCache.get(cacheKey);
+      const cached = await apiCache.get(cacheKey);
       if (cached) {
         return NextResponse.json(cached, {
           status: 200,
@@ -48,6 +50,9 @@ export async function GET(request: NextRequest) {
         userLng = coords.lng;
       }
     }
+
+    const currentUser = await getCurrentUser();
+    const currentUserId = currentUser?.id ?? null;
 
     let trades;
 
@@ -74,23 +79,7 @@ export async function GET(request: NextRequest) {
             lte: lngMax,
           },
         },
-        select: {
-          id: true,
-          ownerId: true,
-          offeredItem: true,
-          requestedItem: true,
-          locationZip: true,
-          latitude: true,
-          longitude: true,
-          status: true,
-          createdAt: true,
-          owner: {
-            select: {
-              id: true,
-              username: true,
-            },
-          },
-        },
+        include: tradeInclude,
         take: Math.min(limit * 3, 500), // Get more candidates for distance filtering
       });
 
@@ -98,69 +87,35 @@ export async function GET(request: NextRequest) {
       const tradesWithDistance = allTrades
         .map((trade) => {
           if (trade.latitude === null || trade.longitude === null) return null;
-          const distance = calculateDistance(
-            userLat!,
-            userLng!,
-            trade.latitude,
-            trade.longitude
-          );
+          const distance = calculateDistance(userLat!, userLng!, trade.latitude, trade.longitude);
           return {
-            ...trade,
-            distance: Math.round(distance * 10) / 10,
-            ownerId: {
-              _id: trade.owner.id,
-              username: trade.owner.username,
-            },
-            coordinates: {
-              lat: trade.latitude,
-              lng: trade.longitude,
-            },
+            distance,
+            formatted: formatTradeResponse(trade as TradeWithRelations, {
+              currentUserId,
+              distance: Math.round(distance * 10) / 10,
+            }),
           };
         })
-        .filter((trade): trade is NonNullable<typeof trade> => {
-          return trade !== null && trade.distance <= radius;
+        .filter((entry): entry is { distance: number; formatted: ReturnType<typeof formatTradeResponse> } => {
+          return entry !== null && entry.distance <= radius;
         })
         .sort((a, b) => a.distance - b.distance)
-        .slice(0, limit); // Limit final results
+        .slice(0, limit);
 
-      trades = tradesWithDistance.map(({ owner, latitude, longitude, ...trade }) => trade);
+      trades = tradesWithDistance.map((entry) => entry.formatted);
       console.log(`Found ${trades.length} trades within ${radius} miles`);
     } else {
       // If no location filter, show all active trades - optimized select
       const tradesQuery = await prisma.trade.findMany({
         where: { status: 'active' },
-        select: {
-          id: true,
-          ownerId: true,
-          offeredItem: true,
-          requestedItem: true,
-          locationZip: true,
-          latitude: true,
-          longitude: true,
-          status: true,
-          createdAt: true,
-          owner: {
-            select: {
-              id: true,
-              username: true,
-            },
-          },
-        },
+        include: tradeInclude,
         orderBy: { createdAt: 'desc' },
         take: limit,
       });
 
-      trades = tradesQuery.map(({ owner, latitude, longitude, ...trade }) => ({
-        ...trade,
-        ownerId: {
-          _id: owner.id,
-          username: owner.username,
-        },
-        coordinates: {
-          lat: latitude,
-          lng: longitude,
-        },
-      }));
+      trades = tradesQuery.map((trade) =>
+        formatTradeResponse(trade as TradeWithRelations, { currentUserId })
+      );
 
       console.log(`Found ${trades.length} trades (no location filter)`);
     }
@@ -168,7 +123,7 @@ export async function GET(request: NextRequest) {
     // Cache the response (only for non-location queries)
     if (!zipCode && !lat) {
       const ttl = getCacheTTL('/api/trades');
-      apiCache.set(cacheKey, { trades }, ttl);
+      await apiCache.set(cacheKey, { trades }, ttl);
     }
 
     return NextResponse.json(
@@ -224,27 +179,15 @@ export async function POST(request: NextRequest) {
         requestedPlantId: requestedPlantId || null,
         status: 'active',
       },
-      include: {
-        owner: {
-          select: { id: true, username: true },
-        },
-      },
+      include: tradeInclude,
     });
 
-    const populatedTrade = {
-      ...trade,
-      ownerId: {
-        _id: trade.owner.id,
-        username: trade.owner.username,
-      },
-      coordinates: {
-        lat: trade.latitude,
-        lng: trade.longitude,
-      },
-    };
+    const populatedTrade = formatTradeResponse(trade as TradeWithRelations, {
+      currentUserId: user.id,
+    });
 
     // Invalidate cache after creating trade
-    invalidateTradeCache();
+    await invalidateTradeCache();
 
     return NextResponse.json({ trade: populatedTrade }, { status: 201 });
   } catch (error) {

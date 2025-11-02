@@ -2,10 +2,11 @@ import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/db';
 import { requireAuth } from '@/lib/auth';
 import { apiCache, getCacheTTL, generateKey } from '@/lib/apiCache';
+import { moderateText } from '@/lib/contentModeration';
 
 // Invalidate cache when posts are created/updated
-function invalidateForumCache() {
-  apiCache.invalidate('/api/forum');
+async function invalidateForumCache() {
+  await apiCache.invalidate('/api/forum');
 }
 
 export async function GET(request: NextRequest) {
@@ -21,7 +22,7 @@ export async function GET(request: NextRequest) {
 
     // Check cache for GET requests
     const cacheKey = generateKey(url.pathname, Object.fromEntries(searchParams.entries()));
-    const cached = apiCache.get(cacheKey);
+    const cached = await apiCache.get(cacheKey);
     if (cached) {
       return NextResponse.json(cached, {
         status: 200,
@@ -101,7 +102,7 @@ export async function GET(request: NextRequest) {
 
     // Cache the response
     const ttl = getCacheTTL('/api/forum');
-    apiCache.set(cacheKey, response, ttl);
+    await apiCache.set(cacheKey, response, ttl);
 
     return NextResponse.json(response, {
       status: 200,
@@ -131,6 +132,23 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Content moderation
+    try {
+      const moderationResult = await moderateText(`${title} ${content}`, {
+        checkToxicity: true,
+        checkSpam: true,
+      });
+      if (!moderationResult.approved) {
+        return NextResponse.json(
+          { error: `Content rejected: ${moderationResult.reasons.join(', ')}` },
+          { status: 400 }
+        );
+      }
+    } catch (error) {
+      // Don't fail if moderation service is unavailable
+      console.error('Content moderation error:', error);
+    }
+
     const post = await prisma.forumPost.create({
       data: {
         authorId: user.id,
@@ -154,7 +172,7 @@ export async function POST(request: NextRequest) {
     };
 
     // Invalidate cache after creating post
-    invalidateForumCache();
+    await invalidateForumCache();
 
     return NextResponse.json({ post: populatedPost }, { status: 201 });
   } catch (error) {

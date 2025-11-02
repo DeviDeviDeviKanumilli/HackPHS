@@ -4,8 +4,8 @@ import { requireAuth } from '@/lib/auth';
 import { apiCache, getCacheTTL, generateKey } from '@/lib/apiCache';
 
 // Invalidate cache when user is updated
-function invalidateUserCache(userId: string) {
-  apiCache.invalidate(`/api/users/${userId}`);
+async function invalidateUserCache(userId: string) {
+  await apiCache.invalidate(`/api/users/${userId}`);
 }
 
 export async function GET(
@@ -18,7 +18,7 @@ export async function GET(
 
     // Check cache for user profiles (cache for longer as they change rarely)
     const cacheKey = generateKey(`/api/users/${userId}`);
-    const cached = apiCache.get(cacheKey);
+    const cached = await apiCache.get(cacheKey);
     if (cached) {
       return NextResponse.json(cached, {
         status: 200,
@@ -30,14 +30,18 @@ export async function GET(
     }
 
     // Optimize: Use _count for followers/following instead of fetching all records
-    const [user, plants, followerCount, followingCount, followers, following] = await Promise.all([
-      prisma.user.findUnique({
+    // Try to fetch user with profilePicture, fallback to without if column doesn't exist
+    let user;
+    try {
+      user = await prisma.user.findUnique({
         where: { id: userId },
         select: {
           id: true,
           username: true,
           email: true,
           bio: true,
+          profilePicture: true,
+          plantImages: true,
           locationZip: true,
           joinDate: true,
           tradesCompleted: true,
@@ -47,24 +51,41 @@ export async function GET(
           createdAt: true,
           updatedAt: true,
         },
-      }),
-      prisma.plant.findMany({
-        where: { ownerId: userId },
-        select: {
-          id: true,
-          name: true,
-          scientificName: true,
-          description: true,
-          imageURL: true,
-          type: true,
-          maintenanceLevel: true,
-          tradeStatus: true,
-          nativeRegion: true,
-          createdAt: true,
-        },
-        orderBy: { createdAt: 'desc' },
-        take: 20,
-      }),
+      });
+    } catch (dbError: any) {
+      // If profilePicture or plantImages column doesn't exist yet, fetch without them
+      if (dbError?.message?.includes('profilePicture') || dbError?.message?.includes('plantImages') || dbError?.code === 'P2021') {
+        console.warn('profilePicture or plantImages column not found, fetching user without them');
+        user = await prisma.user.findUnique({
+          where: { id: userId },
+          select: {
+            id: true,
+            username: true,
+            email: true,
+            bio: true,
+            locationZip: true,
+            joinDate: true,
+            tradesCompleted: true,
+            emailNotifications: true,
+            tradeNotifications: true,
+            messageNotifications: true,
+            createdAt: true,
+            updatedAt: true,
+          },
+        });
+        // Add null profilePicture and empty plantImages for compatibility
+        if (user) {
+          (user as any).profilePicture = null;
+          (user as any).plantImages = [];
+        }
+      } else {
+        throw dbError;
+      }
+    }
+
+    const [plants, followerCount, followingCount, followers, following] = await Promise.all([
+      // Plants are no longer owned by users - they're a public database
+      Promise.resolve([]),
       // Only get counts for quick display
       prisma.userFollow.count({
         where: { followingId: userId },
@@ -93,6 +114,19 @@ export async function GET(
       }),
     ]);
 
+    // Get average rating (optional - might not exist if TradeReview table doesn't exist yet)
+    let ratingStats = { _avg: { rating: null }, _count: { rating: 0 } };
+    try {
+      ratingStats = await prisma.tradeReview.aggregate({
+        where: { revieweeId: userId },
+        _avg: { rating: true },
+        _count: { rating: true },
+      });
+    } catch (error) {
+      // TradeReview table might not exist yet - this is okay
+      console.warn('Could not fetch rating stats (table might not exist):', error);
+    }
+
     if (!user) {
       return NextResponse.json(
         { error: 'User not found' },
@@ -103,17 +137,26 @@ export async function GET(
     const response = {
       user: {
         ...user,
-        plants,
+        _id: user.id, // Add _id for compatibility
+        plants: [], // Plants are no longer owned by users
         followerCount,
         followingCount,
-        followers: followers.map((f) => f.follower),
-        following: following.map((f) => f.following),
+        followers: followers.map((f) => ({
+          ...f.follower,
+          _id: f.follower.id, // Add _id for compatibility
+        })),
+        following: following.map((f) => ({
+          ...f.following,
+          _id: f.following.id, // Add _id for compatibility
+        })),
+        averageRating: ratingStats._avg.rating || 0,
+        reviewCount: ratingStats._count.rating || 0,
       },
     };
 
     // Cache user profiles for 60 seconds
     const ttl = getCacheTTL('/api/users');
-    apiCache.set(cacheKey, response, ttl);
+    await apiCache.set(cacheKey, response, ttl);
 
     return NextResponse.json(response, {
       status: 200,
@@ -124,8 +167,30 @@ export async function GET(
     });
   } catch (error) {
     console.error('Error fetching user:', error);
+    // Log more details about the error for debugging
+    if (error instanceof Error) {
+      console.error('Error details:', {
+        message: error.message,
+        stack: error.stack,
+        name: error.name,
+      });
+      
+      // Check if it's a database schema issue
+      if (error.message.includes('Unknown column') || error.message.includes('profilePicture') || (error as any).code === 'P2021') {
+        return NextResponse.json(
+          { 
+            error: 'Database schema mismatch. Please run: npx prisma db push',
+            details: process.env.NODE_ENV === 'development' ? error.message : undefined
+          },
+          { status: 500 }
+        );
+      }
+    }
     return NextResponse.json(
-      { error: 'Internal server error' },
+      { 
+        error: 'Internal server error',
+        details: process.env.NODE_ENV === 'development' ? (error instanceof Error ? error.message : String(error)) : undefined
+      },
       { status: 500 }
     );
   }
@@ -149,7 +214,7 @@ export async function PUT(
     }
 
     const body = await request.json();
-    const { bio, locationZip } = body;
+    const { bio, profilePicture, plantImages, locationZip } = body;
 
     // Validate bio length
     if (bio !== undefined && bio.length > 500) {
@@ -169,6 +234,8 @@ export async function PUT(
 
     const updateData: any = {};
     if (bio !== undefined) updateData.bio = bio;
+    if (profilePicture !== undefined) updateData.profilePicture = profilePicture;
+    if (plantImages !== undefined) updateData.plantImages = plantImages;
     if (locationZip !== undefined) updateData.locationZip = locationZip;
 
     const updatedUser = await prisma.user.update({
@@ -179,6 +246,8 @@ export async function PUT(
         username: true,
         email: true,
         bio: true,
+        profilePicture: true,
+        plantImages: true,
         locationZip: true,
         joinDate: true,
         tradesCompleted: true,
@@ -191,7 +260,7 @@ export async function PUT(
     });
 
     // Invalidate cache after updating user
-    invalidateUserCache(userId);
+    await invalidateUserCache(userId);
 
     return NextResponse.json(
       {

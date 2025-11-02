@@ -8,7 +8,8 @@ import { motion } from 'framer-motion';
 import { SkeletonPostCard } from '@/components/SkeletonLoader';
 
 interface ForumPost {
-  _id: string;
+  _id?: string;
+  id?: string;
   title: string;
   content: string;
   category: string;
@@ -206,9 +207,11 @@ export default function ForumPage() {
           </div>
         ) : (
           <div className="space-y-4">
-            {posts.map((post, index) => (
-              <PostCard key={post._id} post={post} index={index} />
-            ))}
+            {posts.map((post, index) => {
+              const baseKey = post._id ?? post.id ?? post.title ?? 'post';
+              const uniqueKey = `${baseKey}-${index}`;
+              return <PostCard key={uniqueKey} post={post} index={index} />;
+            })}
           </div>
         )}
       </motion.div>

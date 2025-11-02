@@ -18,6 +18,7 @@ interface SettingsData {
   username: string;
   email: string;
   bio: string;
+  profilePicture: string;
   locationZip: string;
   theme: 'light' | 'dark' | 'auto';
   emailNotifications: boolean;
@@ -41,12 +42,14 @@ export default function SettingsPage() {
     username: '',
     email: '',
     bio: '',
+    profilePicture: '',
     locationZip: '',
     theme: 'light',
     emailNotifications: true,
     tradeNotifications: true,
     messageNotifications: true,
   });
+  const [uploadingImage, setUploadingImage] = useState(false);
 
   const [passwordData, setPasswordData] = useState({
     currentPassword: '',
@@ -103,6 +106,7 @@ export default function SettingsPage() {
           username: data.user.username || '',
           email: data.user.email || '',
           bio: data.user.bio || '',
+          profilePicture: data.user.profilePicture || '',
           locationZip: data.user.locationZip || '',
           theme: (localStorage.getItem('theme') as any) || 'light',
           emailNotifications: data.user.emailNotifications !== false,
@@ -129,6 +133,7 @@ export default function SettingsPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           bio: settings.bio,
+          profilePicture: settings.profilePicture,
           locationZip: settings.locationZip,
         }),
       });
@@ -201,6 +206,49 @@ export default function SettingsPage() {
     
     setSuccess('Theme updated!');
     setTimeout(() => setSuccess(''), 2000);
+  };
+
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith('image/')) {
+      setError('Please select an image file');
+      return;
+    }
+
+    if (file.size > 5 * 1024 * 1024) {
+      setError('Image must be less than 5MB');
+      return;
+    }
+
+    setUploadingImage(true);
+    setError('');
+
+    try {
+      const uploadFormData = new FormData();
+      uploadFormData.append('file', file);
+      uploadFormData.append('folder', 'profile-pictures');
+
+      const uploadResponse = await fetch('/api/upload', {
+        method: 'POST',
+        body: uploadFormData,
+      });
+
+      const uploadData = await uploadResponse.json();
+
+      if (uploadResponse.ok && uploadData.url) {
+        setSettings({ ...settings, profilePicture: uploadData.url });
+        setSuccess('Profile picture uploaded successfully!');
+        setTimeout(() => setSuccess(''), 3000);
+      } else {
+        setError(uploadData.error || 'Failed to upload image');
+      }
+    } catch (err) {
+      setError('Failed to upload image. Please try again.');
+    } finally {
+      setUploadingImage(false);
+    }
   };
 
   const handleNotificationsChange = async (type: string, value: boolean) => {
@@ -327,6 +375,41 @@ export default function SettingsPage() {
                 </h2>
 
                   <div className="space-y-4">
+                    {/* Profile Picture Upload */}
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                        Profile Picture
+                      </label>
+                      <div className="flex items-center space-x-4">
+                        {settings.profilePicture ? (
+                          <img
+                            src={settings.profilePicture}
+                            alt="Profile"
+                            className="w-20 h-20 rounded-full object-cover border-2 border-plant-green-500"
+                          />
+                        ) : (
+                          <div className="w-20 h-20 rounded-full bg-gray-200 dark:bg-gray-700 flex items-center justify-center border-2 border-gray-300 dark:border-gray-600">
+                            <span className="text-3xl">👤</span>
+                          </div>
+                        )}
+                        <div className="flex-1">
+                          <input
+                            type="file"
+                            accept="image/*"
+                            onChange={handleImageUpload}
+                            disabled={uploadingImage}
+                            className="block w-full text-sm text-gray-500 dark:text-gray-400 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-plant-green-50 dark:file:bg-plant-green-900 file:text-plant-green-700 dark:file:text-plant-green-300 hover:file:bg-plant-green-100 dark:hover:file:bg-plant-green-800 file:cursor-pointer disabled:opacity-50"
+                          />
+                          {uploadingImage && (
+                            <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">Uploading...</p>
+                          )}
+                          <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                            Max size: 5MB. Supported formats: JPG, PNG, WebP, GIF
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+
                     <div>
                       <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                         Username

@@ -15,7 +15,7 @@ export async function GET(request: NextRequest) {
     
     // Check cache
     const cacheKey = generateKey('/api/messages/conversations', { userId: user.id });
-    const cached = apiCache.get(cacheKey);
+    const cached = await apiCache.get(cacheKey);
     if (cached) {
       return NextResponse.json(cached, {
         status: 200,
@@ -141,7 +141,7 @@ export async function GET(request: NextRequest) {
 
     // Cache for 10 seconds (messages update frequently)
     const ttl = 10000;
-    apiCache.set(cacheKey, response, ttl);
+    await apiCache.set(cacheKey, response, ttl);
 
     return NextResponse.json(response, {
       status: 200,

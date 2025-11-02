@@ -8,7 +8,10 @@ import {
   checkRateLimit,
   isValidObjectId,
 } from '@/lib/messageSecurity';
+import { moderateText } from '@/lib/contentModeration';
 import { apiCache, getCacheTTL, generateKey } from '@/lib/apiCache';
+import { emitMessage } from '@/lib/socketServer';
+import { sendMessageNotificationEmail } from '@/lib/email';
 
 export async function GET(request: NextRequest) {
   try {
@@ -30,7 +33,7 @@ export async function GET(request: NextRequest) {
 
     // Cache key for specific conversation
     const cacheKey = generateKey(url.pathname, Object.fromEntries(searchParams.entries()));
-    const cached = apiCache.get(cacheKey);
+    const cached = await apiCache.get(cacheKey);
     if (cached) {
       return NextResponse.json(cached, {
         status: 200,
@@ -100,7 +103,7 @@ export async function GET(request: NextRequest) {
 
     // Cache for 5 seconds (messages update frequently)
     const ttl = 5000;
-    apiCache.set(cacheKey, response, ttl);
+    await apiCache.set(cacheKey, response, ttl);
 
     return NextResponse.json(response, {
       status: 200,
@@ -162,7 +165,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Check for inappropriate content
+    // Check for inappropriate content (basic check)
     if (containsInappropriateContent(content)) {
       return NextResponse.json(
         { error: 'Message contains inappropriate content' },
@@ -170,8 +173,25 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Advanced content moderation (optional)
+    try {
+      const moderationResult = await moderateText(content, {
+        checkToxicity: true,
+        checkSpam: true,
+      });
+      if (!moderationResult.approved) {
+        return NextResponse.json(
+          { error: `Message rejected: ${moderationResult.reasons.join(', ')}` },
+          { status: 400 }
+        );
+      }
+    } catch (error) {
+      // Don't fail if moderation service is unavailable
+      console.error('Content moderation error:', error);
+    }
+
     // Rate limiting: max 10 messages per minute
-    if (!checkRateLimit(user.id, 10, 60000)) {
+    if (!(await checkRateLimit(user.id, 10, 60000))) {
       return NextResponse.json(
         { error: 'Rate limit exceeded. Please wait before sending more messages.' },
         { status: 429 }
@@ -221,6 +241,35 @@ export async function POST(request: NextRequest) {
         username: message.receiver.username,
       },
     };
+
+    // Emit real-time message via Socket.IO
+    try {
+      emitMessage(user.id, receiverId, populatedMessage);
+    } catch (error) {
+      console.error('Failed to emit Socket.IO message:', error);
+      // Don't fail the request if Socket.IO fails
+    }
+
+    // Send email notification if user has notifications enabled
+    try {
+      const receiver = await prisma.user.findUnique({
+        where: { id: receiverId },
+        select: { email: true, emailNotifications: true },
+      });
+
+      if (receiver?.emailNotifications && receiver.email) {
+        const conversationUrl = `${process.env.NEXTAUTH_URL}/messages/${user.id}`;
+        await sendMessageNotificationEmail(
+          receiver.email,
+          message.sender.username,
+          sanitizedContent.substring(0, 100),
+          conversationUrl
+        );
+      }
+    } catch (error) {
+      console.error('Failed to send email notification:', error);
+      // Don't fail the request if email fails
+    }
 
     return NextResponse.json({ message: populatedMessage }, { status: 201 });
   } catch (error) {

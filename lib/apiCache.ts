@@ -1,5 +1,6 @@
 // API response caching for faster responses
-// Uses in-memory cache with TTL for frequently accessed endpoints
+// Uses Redis for distributed caching with in-memory fallback
+import { redisGet, redisSet, redisDel, redisDelPattern, isRedisEnabled } from './redis';
 
 interface CacheEntry {
   data: any;
@@ -8,12 +9,26 @@ interface CacheEntry {
 }
 
 class APICache {
-  private cache = new Map<string, CacheEntry>();
+  private cache = new Map<string, CacheEntry>(); // In-memory fallback
 
   /**
    * Get cached response if available and not expired
+   * Tries Redis first, falls back to in-memory cache
    */
-  get(key: string): any | null {
+  async get(key: string): Promise<any | null> {
+    // Try Redis first if available
+    if (isRedisEnabled()) {
+      try {
+        const cached = await redisGet<any>(key);
+        if (cached !== null) {
+          return cached;
+        }
+      } catch (error) {
+        console.error('Redis GET error, falling back to memory:', error);
+      }
+    }
+
+    // Fallback to in-memory cache
     const entry = this.cache.get(key);
     if (!entry) return null;
 
@@ -28,8 +43,21 @@ class APICache {
 
   /**
    * Set cache entry with TTL
+   * Writes to both Redis and in-memory cache
    */
-  set(key: string, data: any, ttl: number = 60000): void {
+  async set(key: string, data: any, ttl: number = 60000): Promise<void> {
+    const ttlSeconds = Math.floor(ttl / 1000);
+
+    // Try Redis first if available
+    if (isRedisEnabled()) {
+      try {
+        await redisSet(key, data, ttlSeconds > 0 ? ttlSeconds : undefined);
+      } catch (error) {
+        console.error('Redis SET error, using memory fallback:', error);
+      }
+    }
+
+    // Always maintain in-memory cache as fallback
     this.cache.set(key, {
       data,
       timestamp: Date.now(),
@@ -54,7 +82,17 @@ class APICache {
   /**
    * Invalidate cache entries matching pattern
    */
-  invalidate(pattern: string): void {
+  async invalidate(pattern: string): Promise<void> {
+    // Invalidate in Redis
+    if (isRedisEnabled()) {
+      try {
+        await redisDelPattern(pattern);
+      } catch (error) {
+        console.error('Redis invalidate error:', error);
+      }
+    }
+
+    // Invalidate in-memory cache
     for (const key of this.cache.keys()) {
       if (key.includes(pattern)) {
         this.cache.delete(key);
@@ -65,7 +103,9 @@ class APICache {
   /**
    * Clear all cache
    */
-  clear(): void {
+  async clear(): Promise<void> {
+    // Clear Redis (this would require a FLUSHDB command, be careful in production)
+    // For now, we'll just clear the in-memory cache
     this.cache.clear();
   }
 

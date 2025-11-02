@@ -10,22 +10,20 @@ export default function NewPlantPage() {
   const { data: session } = useSession();
   const [formData, setFormData] = useState({
     name: '',
-    scientificName: '',
+    genus: '',
+    species: '',
     description: '',
     imageURL: '',
-    type: '',
-    maintenanceLevel: 'medium',
+    cycle: '',
+    wateringFrequency: '',
     tradeStatus: 'available',
     nativeRegion: '',
     careTips: '',
+    idealTemp: '',
+    sunlight: '',
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-
-  if (!session) {
-    router.push('/login');
-    return null;
-  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -48,7 +46,7 @@ export default function NewPlantPage() {
         return;
       }
 
-      router.push(`/profile/${session.user?.id}`);
+      router.push('/library');
     } catch (err) {
       setError('An error occurred. Please try again.');
     } finally {
@@ -87,18 +85,35 @@ export default function NewPlantPage() {
             />
           </div>
 
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Scientific Name
-            </label>
-            <input
-              type="text"
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-plant-green-500 focus:border-plant-green-500"
-              value={formData.scientificName}
-              onChange={(e) =>
-                setFormData({ ...formData, scientificName: e.target.value })
-              }
-            />
+          <div className="grid md:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Genus
+              </label>
+              <input
+                type="text"
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-plant-green-500 focus:border-plant-green-500"
+                placeholder="e.g., Monstera"
+                value={formData.genus}
+                onChange={(e) =>
+                  setFormData({ ...formData, genus: e.target.value })
+                }
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Species
+              </label>
+              <input
+                type="text"
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-plant-green-500 focus:border-plant-green-500"
+                placeholder="e.g., deliciosa"
+                value={formData.species}
+                onChange={(e) =>
+                  setFormData({ ...formData, species: e.target.value })
+                }
+              />
+            </div>
           </div>
 
           <div>
@@ -119,34 +134,64 @@ export default function NewPlantPage() {
           <div className="grid md:grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
-                Type
+                Cycle
               </label>
               <input
                 type="text"
                 className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-plant-green-500 focus:border-plant-green-500"
-                placeholder="e.g., Succulent, Houseplant"
-                value={formData.type}
+                placeholder="e.g., Perennial, Annual"
+                value={formData.cycle}
                 onChange={(e) =>
-                  setFormData({ ...formData, type: e.target.value })
+                  setFormData({ ...formData, cycle: e.target.value })
                 }
               />
             </div>
 
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
-                Maintenance Level
+                Watering Frequency
               </label>
-              <select
+              <input
+                type="text"
                 className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-plant-green-500 focus:border-plant-green-500"
-                value={formData.maintenanceLevel}
+                placeholder="e.g., Weekly, Bi-weekly"
+                value={formData.wateringFrequency}
                 onChange={(e) =>
-                  setFormData({ ...formData, maintenanceLevel: e.target.value })
+                  setFormData({ ...formData, wateringFrequency: e.target.value })
                 }
-              >
-                <option value="low">Low</option>
-                <option value="medium">Medium</option>
-                <option value="high">High</option>
-              </select>
+              />
+            </div>
+          </div>
+
+          <div className="grid md:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Ideal Temperature
+              </label>
+              <input
+                type="text"
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-plant-green-500 focus:border-plant-green-500"
+                placeholder="e.g., 65-75°F"
+                value={formData.idealTemp}
+                onChange={(e) =>
+                  setFormData({ ...formData, idealTemp: e.target.value })
+                }
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Sunlight Requirements
+              </label>
+              <input
+                type="text"
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-plant-green-500 focus:border-plant-green-500"
+                placeholder="e.g., Full sun, Partial shade"
+                value={formData.sunlight}
+                onChange={(e) =>
+                  setFormData({ ...formData, sunlight: e.target.value })
+                }
+              />
             </div>
           </div>
 

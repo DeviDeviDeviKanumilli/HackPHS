@@ -82,13 +82,47 @@ export function containsInappropriateContent(content: string): boolean {
 }
 
 /**
- * Rate limiting check (basic implementation)
- * In production, use Redis or a proper rate limiting service
+ * Rate limiting check with Redis support
+ * Falls back to in-memory cache if Redis is unavailable
  */
-const messageRateLimits = new Map<string, { count: number; resetTime: number }>();
+import { redisGet, redisSet, isRedisEnabled } from './redis';
 
-export function checkRateLimit(userId: string, maxMessages: number = 10, windowMs: number = 60000): boolean {
+const messageRateLimits = new Map<string, { count: number; resetTime: number }>(); // Fallback
+
+export async function checkRateLimit(
+  userId: string,
+  maxMessages: number = 10,
+  windowMs: number = 60000
+): Promise<boolean> {
   const now = Date.now();
+  const key = `rate_limit:${userId}`;
+  const windowSeconds = Math.floor(windowMs / 1000);
+
+  // Try Redis first if available
+  if (isRedisEnabled()) {
+    try {
+      const count = await redisGet<number>(key);
+      
+      if (count === null) {
+        // First request in window
+        await redisSet(key, 1, windowSeconds);
+        return true;
+      }
+
+      if (count >= maxMessages) {
+        return false; // Rate limit exceeded
+      }
+
+      // Increment count (extend TTL if needed)
+      await redisSet(key, count + 1, windowSeconds);
+      return true;
+    } catch (error) {
+      console.error('Redis rate limit error, falling back to memory:', error);
+      // Fall through to in-memory fallback
+    }
+  }
+
+  // In-memory fallback
   const userLimit = messageRateLimits.get(userId);
 
   if (!userLimit || now > userLimit.resetTime) {

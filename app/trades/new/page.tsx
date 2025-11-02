@@ -42,7 +42,12 @@ export default function NewTradePage() {
         return;
       }
 
-      router.push('/trades');
+      // Redirect to My Trades after creation
+      if (data.trade?.id) {
+        router.push('/my-trades');
+      } else {
+        router.push('/trades');
+      }
     } catch (err) {
       setError('An error occurred. Please try again.');
     } finally {

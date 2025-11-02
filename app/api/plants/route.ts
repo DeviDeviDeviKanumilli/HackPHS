@@ -2,10 +2,11 @@ import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/db';
 import { requireAuth } from '@/lib/auth';
 import { apiCache, getCacheTTL, generateKey } from '@/lib/apiCache';
+import { searchPlants } from '@/lib/search';
 
 // Invalidate cache when plants are created/updated
-function invalidatePlantCache() {
-  apiCache.invalidate('/api/plants');
+async function invalidatePlantCache() {
+  await apiCache.invalidate('/api/plants');
 }
 
 export async function GET(request: NextRequest) {
@@ -13,7 +14,6 @@ export async function GET(request: NextRequest) {
     const url = new URL(request.url);
     const searchParams = url.searchParams;
     const search = searchParams.get('search');
-    const ownerId = searchParams.get('ownerId');
     const page = parseInt(searchParams.get('page') || '1');
     const limit = Math.min(parseInt(searchParams.get('limit') || '20'), 100); // Cap at 100
     const skip = (page - 1) * limit;
@@ -21,7 +21,7 @@ export async function GET(request: NextRequest) {
 
     // Check cache for GET requests
     const cacheKey = generateKey(url.pathname, Object.fromEntries(searchParams.entries()));
-    const cached = apiCache.get(cacheKey);
+    const cached = await apiCache.get(cacheKey);
     if (cached) {
       return NextResponse.json(cached, {
         status: 200,
@@ -32,18 +32,72 @@ export async function GET(request: NextRequest) {
       });
     }
 
+    // Use full-text search if search query provided
+    if (search) {
+      try {
+        const searchResults = await searchPlants(search, {
+          limit,
+          offset: skip,
+        });
+
+        const formattedPlants = searchResults.plants.map((plant: any) => ({
+          id: plant.id,
+          _id: plant.id,
+          name: plant.name,
+          genus: plant.genus,
+          species: plant.species,
+          description: plant.description,
+          imageURL: plant.image_url || plant.imageURL,
+          cycle: plant.cycle,
+          wateringFrequency: plant.watering_frequency || plant.wateringFrequency,
+          nativeRegion: plant.native_region || plant.nativeRegion,
+          careTips: plant.care_tips || plant.careTips,
+          tradeStatus: plant.trade_status || plant.tradeStatus,
+          idealTemp: plant.ideal_temp || plant.idealTemp,
+          sunlight: plant.sunlight,
+          createdAt: plant.created_at || plant.createdAt,
+          rank: plant.rank, // Include search ranking
+        }));
+
+        const response = {
+          plants: formattedPlants,
+          ...(includeCount && {
+            pagination: {
+              page: searchResults.page,
+              limit,
+              total: searchResults.total,
+              pages: searchResults.pages,
+            },
+          }),
+        };
+
+        // Cache the response
+        const ttl = getCacheTTL('/api/plants');
+        await apiCache.set(cacheKey, response, ttl);
+
+        return NextResponse.json(response, {
+          status: 200,
+          headers: {
+            'X-Cache': 'MISS',
+            'X-Search-Method': 'fulltext',
+            'Cache-Control': 'public, max-age=30, stale-while-revalidate=60',
+          },
+        });
+      } catch (error) {
+        console.error('Full-text search failed, falling back to basic search:', error);
+        // Fall through to basic search
+      }
+    }
+
     const where: any = {};
     
     if (search) {
       where.OR = [
         { name: { contains: search, mode: 'insensitive' } },
-        { scientificName: { contains: search, mode: 'insensitive' } },
+        { genus: { contains: search, mode: 'insensitive' } },
+        { species: { contains: search, mode: 'insensitive' } },
         { description: { contains: search, mode: 'insensitive' } },
       ];
-    }
-
-    if (ownerId) {
-      where.ownerId = ownerId;
     }
 
     // Optimize: Only fetch count if needed
@@ -52,20 +106,19 @@ export async function GET(request: NextRequest) {
         where,
         select: {
           id: true,
-          ownerId: true,
           name: true,
-          scientificName: true,
+          genus: true,
+          species: true,
           description: true,
           imageURL: true,
-          type: true,
-          maintenanceLevel: true,
-          tradeStatus: true,
+          cycle: true,
+          wateringFrequency: true,
           nativeRegion: true,
           careTips: true,
+          tradeStatus: true,
+          idealTemp: true,
+          sunlight: true,
           createdAt: true,
-          owner: {
-            select: { id: true, username: true },
-          },
         },
         orderBy: { createdAt: 'desc' },
         skip,
@@ -82,12 +135,9 @@ export async function GET(request: NextRequest) {
     const plants = results[0] as typeof results[0];
     const total = includeCount ? (results[1] as number) : undefined;
 
-    const formattedPlants = plants.map(({ owner, ...plant }) => ({
+    const formattedPlants = plants.map((plant) => ({
       ...plant,
-      ownerId: {
-        _id: owner.id,
-        username: owner.username,
-      },
+      _id: plant.id,
     }));
 
     const response = {
@@ -104,7 +154,7 @@ export async function GET(request: NextRequest) {
 
     // Cache the response
     const ttl = getCacheTTL('/api/plants');
-    apiCache.set(cacheKey, response, ttl);
+    await apiCache.set(cacheKey, response, ttl);
 
     return NextResponse.json(response, {
       status: 200,
@@ -124,40 +174,42 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    const user = await requireAuth();
+    // No authentication required - plants are public database entries
     const plantData = await request.json();
 
     if (!plantData.name || !plantData.description) {
       return NextResponse.json(
-        { error: 'Missing required fields' },
+        { error: 'Missing required fields: name and description are required' },
         { status: 400 }
       );
     }
 
     const plant = await prisma.plant.create({
       data: {
-        ...plantData,
-        ownerId: user.id,
-      },
-      include: {
-        owner: {
-          select: { id: true, username: true },
-        },
+        name: plantData.name,
+        genus: plantData.genus || null,
+        species: plantData.species || null,
+        description: plantData.description,
+        imageURL: plantData.imageURL || '/placeholder-plant.jpg',
+        cycle: plantData.cycle || null,
+        wateringFrequency: plantData.wateringFrequency || null,
+        nativeRegion: plantData.nativeRegion || null,
+        careTips: plantData.careTips || null,
+        tradeStatus: plantData.tradeStatus || 'available',
+        idealTemp: plantData.idealTemp || null,
+        sunlight: plantData.sunlight || null,
       },
     });
 
-    const populatedPlant = {
+    const formattedPlant = {
       ...plant,
-      ownerId: {
-        _id: plant.owner.id,
-        username: plant.owner.username,
-      },
+      _id: plant.id,
     };
 
     // Invalidate cache after creating plant
-    invalidatePlantCache();
+    await invalidatePlantCache();
 
-    return NextResponse.json({ plant: populatedPlant }, { status: 201 });
+    return NextResponse.json({ plant: formattedPlant }, { status: 201 });
   } catch (error) {
     console.error('Error creating plant:', error);
     return NextResponse.json(

@@ -6,26 +6,30 @@ import { useSession } from 'next-auth/react';
 import Link from 'next/link';
 import { motion } from 'framer-motion';
 
-interface Plant {
-  _id: string;
-  name: string;
-  scientificName?: string;
-  description: string;
-  imageURL: string;
-  type: string;
-  maintenanceLevel: string;
-  tradeStatus: string;
-}
-
 interface User {
   _id: string;
   username: string;
   joinDate: string;
   bio?: string;
+  profilePicture?: string;
+  plantImages?: string[];
   followers: any[];
   following: any[];
   tradesCompleted: number;
-  plants: Plant[];
+  plants: any[]; // Empty array now - plants are not owned by users
+  averageRating?: number;
+  reviewCount?: number;
+}
+
+interface Review {
+  id: string;
+  rating: number;
+  comment?: string;
+  createdAt: string;
+  reviewer: {
+    id: string;
+    username: string;
+  };
 }
 
 export default function ProfilePage() {
@@ -35,6 +39,8 @@ export default function ProfilePage() {
   const [loading, setLoading] = useState(true);
   const [isFollowing, setIsFollowing] = useState(false);
   const [followingLoading, setFollowingLoading] = useState(false);
+  const [reviews, setReviews] = useState<Review[]>([]);
+  const [showReviews, setShowReviews] = useState(false);
 
   const userId = params.id as string;
   const isOwnProfile = session?.user?.id === userId;
@@ -47,15 +53,29 @@ export default function ProfilePage() {
 
   const fetchUser = async () => {
     try {
-      const response = await fetch(`/api/users/${userId}`);
-      const data = await response.json();
-      if (response.ok) {
-        setUser(data.user);
+      const [userResponse, reviewsResponse] = await Promise.all([
+        fetch(`/api/users/${userId}`),
+        fetch(`/api/reviews?userId=${userId}&limit=5`),
+      ]);
+      
+      const userData = await userResponse.json();
+      if (userResponse.ok) {
+        setUser(userData.user);
         setIsFollowing(
-          data.user.followers?.some(
-            (follower: any) => follower._id === session?.user?.id
+          userData.user.followers?.some(
+            (follower: any) => (follower._id || follower.id) === session?.user?.id
           ) || false
         );
+      } else {
+        // Handle error response
+        console.error('User not found:', userData.error);
+        setLoading(false);
+        return;
+      }
+
+      const reviewsData = await reviewsResponse.json();
+      if (reviewsResponse.ok && reviewsData.reviews) {
+        setReviews(reviewsData.reviews);
       }
     } catch (error) {
       console.error('Error fetching user:', error);
@@ -109,17 +129,29 @@ export default function ProfilePage() {
         className="bg-white rounded-2xl shadow-lg p-8 mb-8"
       >
         <div className="flex flex-col md:flex-row md:items-center md:justify-between">
-          <div>
-            <h1 className="text-4xl font-bold text-plant-green-800 mb-2">
-              {user.username}
-            </h1>
+          <div className="flex items-start space-x-4">
+            {user.profilePicture ? (
+              <img
+                src={user.profilePicture}
+                alt={user.username}
+                className="w-20 h-20 rounded-full object-cover border-2 border-plant-green-500 flex-shrink-0"
+              />
+            ) : (
+              <div className="w-20 h-20 rounded-full bg-gray-200 flex items-center justify-center border-2 border-gray-300 flex-shrink-0">
+                <span className="text-3xl">👤</span>
+              </div>
+            )}
+            <div>
+              <h1 className="text-4xl font-bold text-plant-green-800 mb-2">
+                {user.username}
+              </h1>
             <p className="text-gray-600 mb-4">
               Joined {joinDate} • {user.tradesCompleted} trades completed
             </p>
             {user.bio && (
               <p className="text-gray-700 mb-4">{user.bio}</p>
             )}
-            <div className="flex space-x-6 text-gray-600">
+            <div className="flex space-x-6 text-gray-600 flex-wrap gap-4">
               <div>
                 <span className="font-semibold">{user.followerCount ?? (user.followers?.length || 0)}</span>{' '}
                 Followers
@@ -128,9 +160,13 @@ export default function ProfilePage() {
                 <span className="font-semibold">{user.followingCount ?? (user.following?.length || 0)}</span>{' '}
                 Following
               </div>
-              <div>
-                <span className="font-semibold">{user.plants?.length || 0}</span> Plants
-              </div>
+              {user.averageRating !== undefined && user.averageRating > 0 && (
+                <div>
+                  <span className="font-semibold">⭐ {user.averageRating.toFixed(1)}</span>{' '}
+                  ({user.reviewCount || 0} reviews)
+                </div>
+              )}
+            </div>
             </div>
           </div>
           <div className="flex flex-col md:flex-row gap-3 mt-4 md:mt-0">
@@ -171,94 +207,146 @@ export default function ProfilePage() {
         </div>
       </motion.div>
 
-      <div>
-        <div className="flex items-center justify-between mb-6">
-          <h2 className="text-2xl font-bold text-plant-green-800">
-            Plant Collection
-          </h2>
-          {isOwnProfile && (
-            <Link
-              href="/plants/new"
-              className="px-4 py-2 bg-plant-green-600 text-white rounded-lg hover:bg-plant-green-700 transition-colors font-semibold"
-            >
-              + Add Plant
-            </Link>
-          )}
-        </div>
-        {user.plants && user.plants.length > 0 ? (
-          <div className="grid md:grid-cols-3 gap-6">
-            {user.plants.map((plant) => (
-              <motion.div
-                key={plant._id}
-                initial={{ opacity: 0, scale: 0.9 }}
-                animate={{ opacity: 1, scale: 1 }}
-                className="bg-white rounded-xl shadow-md hover:shadow-lg transition-shadow overflow-hidden"
-              >
-                <div className="h-48 bg-gradient-plant flex items-center justify-center">
-                  {plant.imageURL && plant.imageURL !== '/placeholder-plant.jpg' ? (
-                    <img
-                      src={plant.imageURL}
-                      alt={plant.name}
-                      className="w-full h-full object-cover"
-                    />
-                  ) : (
-                    <span className="text-6xl">🌱</span>
-                  )}
-                </div>
-                <div className="p-4">
-                  <h3 className="text-xl font-semibold text-plant-green-800 mb-1">
-                    {plant.name}
-                  </h3>
-                  {plant.scientificName && (
-                    <p className="text-sm text-gray-500 italic mb-2">
-                      {plant.scientificName}
-                    </p>
-                  )}
-                  <p className="text-gray-600 text-sm mb-3 line-clamp-2">
-                    {plant.description}
-                  </p>
-                  <div className="flex items-center justify-between">
-                    <span
-                      className={`px-2 py-1 rounded text-xs font-semibold ${
-                        plant.maintenanceLevel === 'low'
-                          ? 'bg-green-100 text-green-700'
-                          : plant.maintenanceLevel === 'medium'
-                          ? 'bg-yellow-100 text-yellow-700'
-                          : 'bg-red-100 text-red-700'
-                      }`}
-                    >
-                      {plant.maintenanceLevel} maintenance
-                    </span>
-                    <span
-                      className={`px-2 py-1 rounded text-xs font-semibold ${
-                        plant.tradeStatus === 'available'
-                          ? 'bg-blue-100 text-blue-700'
-                          : plant.tradeStatus === 'pending'
-                          ? 'bg-yellow-100 text-yellow-700'
-                          : 'bg-gray-100 text-gray-700'
-                      }`}
-                    >
-                      {plant.tradeStatus}
-                    </span>
-                  </div>
-                </div>
-              </motion.div>
-            ))}
+      {/* Plant Images Section */}
+      {user.plantImages && user.plantImages.length > 0 && (
+        <div className="mt-8">
+          <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-lg p-6">
+            <h2 className="text-2xl font-bold text-plant-green-800 dark:text-plant-green-200 mb-4">
+              🌿 Plant Gallery
+            </h2>
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+              {user.plantImages.map((imageUrl, index) => (
+                <motion.div
+                  key={index}
+                  initial={{ opacity: 0, scale: 0.9 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  className="relative group aspect-square"
+                >
+                  <img
+                    src={imageUrl}
+                    alt={`Plant ${index + 1}`}
+                    className="w-full h-full object-cover rounded-lg border-2 border-gray-200 dark:border-gray-700"
+                  />
+                </motion.div>
+              ))}
+            </div>
           </div>
-        ) : (
-          <div className="bg-white rounded-xl shadow-md p-12 text-center">
-            <span className="text-6xl mb-4 block">🌿</span>
-            <p className="text-gray-600">No plants in collection yet</p>
-            {isOwnProfile && (
-              <Link
-                href="/plants/new"
-                className="mt-4 inline-block px-6 py-2 bg-plant-green-600 text-white rounded-lg hover:bg-plant-green-700 transition-colors"
+        </div>
+      )}
+
+      {/* Reviews Section - Made More Prominent */}
+      <div className="mt-8">
+        <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-lg p-6 mb-6">
+          <div className="flex items-center justify-between mb-6">
+            <div className="flex items-center space-x-4">
+              <h2 className="text-2xl font-bold text-plant-green-800 dark:text-plant-green-200">
+                ⭐ Reviews & Ratings
+              </h2>
+              {(user.reviewCount || 0) > 0 && (
+                <div className="flex items-center space-x-2 bg-yellow-50 dark:bg-yellow-900/30 px-4 py-2 rounded-lg">
+                  <div className="flex items-center">
+                    {Array.from({ length: 5 }).map((_, i) => (
+                      <span
+                        key={i}
+                        className={i < Math.round(user.averageRating || 0) ? 'text-yellow-400 text-xl' : 'text-gray-300 text-xl'}
+                      >
+                        ⭐
+                      </span>
+                    ))}
+                  </div>
+                  <span className="text-2xl font-bold text-yellow-600 dark:text-yellow-400">
+                    {(user.averageRating || 0).toFixed(1)}
+                  </span>
+                  <span className="text-sm text-gray-600 dark:text-gray-400">
+                    ({user.reviewCount || 0} {(user.reviewCount || 0) === 1 ? 'review' : 'reviews'})
+                  </span>
+                </div>
+              )}
+            </div>
+            {(user.reviewCount || 0) > 0 && (
+              <button
+                onClick={() => setShowReviews(!showReviews)}
+                className="px-4 py-2 bg-plant-green-600 text-white rounded-lg hover:bg-plant-green-700 transition-colors font-semibold text-sm"
               >
-                Add Your First Plant
-              </Link>
+                {showReviews ? 'Hide Reviews' : 'Show All Reviews'}
+              </button>
             )}
           </div>
-        )}
+
+          {(user.reviewCount || 0) === 0 ? (
+            <div className="text-center py-8 text-gray-600 dark:text-gray-400">
+              <span className="text-4xl block mb-2">⭐</span>
+              <p className="font-medium">No reviews yet</p>
+              <p className="text-sm">Complete trades to receive reviews!</p>
+            </div>
+          ) : !showReviews ? (
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              {reviews.slice(0, 3).map((review) => (
+                <div key={review.id} className="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-4">
+                  <div className="flex items-center justify-between mb-2">
+                    <Link
+                      href={`/profile/${review.reviewer.id}`}
+                      className="font-semibold text-plant-green-600 dark:text-plant-green-400 hover:underline"
+                    >
+                      {review.reviewer.username}
+                    </Link>
+                    <div className="flex items-center">
+                      {Array.from({ length: 5 }).map((_, i) => (
+                        <span key={i} className={i < review.rating ? 'text-yellow-400 text-sm' : 'text-gray-300 text-sm'}>
+                          ⭐
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                  {review.comment && (
+                    <p className="text-gray-700 dark:text-gray-300 text-sm line-clamp-3">{review.comment}</p>
+                  )}
+                  <span className="text-xs text-gray-500 dark:text-gray-400 mt-2 block">
+                    {new Date(review.createdAt).toLocaleDateString()}
+                  </span>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {reviews.map((review) => (
+                <div key={review.id} className="border-b border-gray-200 dark:border-gray-700 pb-4 last:border-0">
+                  <div className="flex items-start justify-between mb-2">
+                    <div className="flex items-center space-x-3">
+                      <Link
+                        href={`/profile/${review.reviewer.id}`}
+                        className="font-semibold text-plant-green-600 dark:text-plant-green-400 hover:underline"
+                      >
+                        {review.reviewer.username}
+                      </Link>
+                      <div className="flex items-center">
+                        {Array.from({ length: 5 }).map((_, i) => (
+                          <span key={i} className={i < review.rating ? 'text-yellow-400' : 'text-gray-300'}>
+                            ⭐
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                    <span className="text-xs text-gray-500 dark:text-gray-400">
+                      {new Date(review.createdAt).toLocaleDateString()}
+                    </span>
+                  </div>
+                  {review.comment && (
+                    <p className="text-gray-700 dark:text-gray-300">{review.comment}</p>
+                  )}
+                </div>
+              ))}
+              {reviews.length < (user.reviewCount || 0) && (
+                <Link
+                  href={`/profile/${userId}/reviews`}
+                  className="block text-center px-6 py-3 bg-plant-green-600 text-white rounded-lg hover:bg-plant-green-700 transition-colors font-semibold mt-4"
+                >
+                  View All {user.reviewCount} Reviews →
+                </Link>
+              )}
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );

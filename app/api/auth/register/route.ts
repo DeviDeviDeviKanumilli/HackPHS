@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import bcrypt from 'bcryptjs';
 import prisma from '@/lib/db';
+import { sendWelcomeEmail } from '@/lib/email';
+import { logInfo } from '@/lib/logger';
 
 export async function POST(request: NextRequest) {
   try {
@@ -88,6 +90,12 @@ export async function POST(request: NextRequest) {
     });
 
     console.log('User created successfully:', user.id);
+    logInfo('User registered', { userId: user.id, username: user.username });
+
+    // Send welcome email (don't await to avoid blocking response)
+    sendWelcomeEmail(user.email, user.username).catch((error) => {
+      console.error('Failed to send welcome email:', error);
+    });
 
     return NextResponse.json(
       {

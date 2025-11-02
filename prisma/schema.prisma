@@ -16,6 +16,8 @@ model User {
   passwordHash         String
   joinDate             DateTime @default(now())
   bio                  String?  @db.VarChar(500)
+  profilePicture       String?
+  plantImages          String[] @default([])
   locationZip          String?
   emailNotifications   Boolean  @default(true)
   tradeNotifications   Boolean  @default(true)
@@ -27,12 +29,15 @@ model User {
   // Relationships
   following        UserFollow[] @relation("UserFollower")
   followers        UserFollow[] @relation("UserFollowing")
-  plants           Plant[]
   likedPlants      Plant[]      @relation("PlantLikes")
   trades           Trade[]
+  participatingTrades Trade[] @relation("TradeCounterparty")
+  tradeRequests    TradeRequest[] @relation("UserTradeRequests")
   sentMessages     Message[]    @relation("SentMessages")
   receivedMessages Message[]    @relation("ReceivedMessages")
   forumPosts       ForumPost[]
+  reviewsGiven     TradeReview[] @relation("Reviewer")
+  reviewsReceived  TradeReview[] @relation("Reviewee")
 
   @@index([email])
   @@index([username])
@@ -41,28 +46,29 @@ model User {
 
 model Plant {
   id               String      @id @default(cuid())
-  ownerId          String
   name             String
-  scientificName   String?
+  genus            String?
+  species          String?
   description      String      @db.Text
   imageURL         String      @default("/placeholder-plant.jpg")
-  type             String
-  maintenanceLevel String      @default("medium")
-  tradeStatus      TradeStatus @default(available)
+  cycle            String?
+  wateringFrequency String?
   nativeRegion     String?
   careTips         String?     @db.Text
+  tradeStatus      TradeStatus @default(available)
+  idealTemp        String?
+  sunlight         String?
   createdAt        DateTime    @default(now())
   updatedAt        DateTime    @updatedAt
 
   // Relationships
-  owner           User    @relation(fields: [ownerId], references: [id], onDelete: Cascade)
   likedBy         User[]  @relation("PlantLikes")
   offeredTrades   Trade[] @relation("OfferedPlants")
   requestedTrades Trade[] @relation("RequestedPlants")
 
-  @@index([ownerId])
   @@index([name])
   @@index([tradeStatus])
+  @@index([genus, species])
   @@map("plants")
 }
 
@@ -77,6 +83,7 @@ model Trade {
   status           TradeStatus @default(active)
   offeredPlantId   String?
   requestedPlantId String?
+  counterpartyId   String?
   createdAt        DateTime    @default(now())
   updatedAt        DateTime    @updatedAt
 
@@ -84,9 +91,13 @@ model Trade {
   owner          User   @relation(fields: [ownerId], references: [id], onDelete: Cascade)
   offeredPlant   Plant? @relation("OfferedPlants", fields: [offeredPlantId], references: [id])
   requestedPlant Plant? @relation("RequestedPlants", fields: [requestedPlantId], references: [id])
+  reviews        TradeReview[]
+  counterparty   User?  @relation("TradeCounterparty", fields: [counterpartyId], references: [id])
+  requests       TradeRequest[]
 
   @@index([ownerId])
   @@index([status])
+  @@index([counterpartyId])
   @@index([latitude, longitude]) // For geospatial bounding box queries
   @@index([status, latitude, longitude]) // Composite for filtered geospatial queries
   @@index([status, createdAt]) // For filtered latest trades
@@ -172,11 +183,55 @@ model UserFollow {
   @@map("user_follows")
 }
 
+model TradeReview {
+  id          String   @id @default(cuid())
+  tradeId     String
+  reviewerId  String
+  revieweeId  String
+  rating      Int      // 1-5 stars
+  comment     String?  @db.Text
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relationships
+  trade    Trade @relation(fields: [tradeId], references: [id], onDelete: Cascade)
+  reviewer User  @relation("Reviewer", fields: [reviewerId], references: [id], onDelete: Cascade)
+  reviewee User  @relation("Reviewee", fields: [revieweeId], references: [id], onDelete: Cascade)
+
+  @@unique([tradeId, reviewerId]) // One review per trade per reviewer
+  @@index([revieweeId]) // For quick lookup of user's average rating
+  @@index([tradeId])
+  @@index([rating])
+  @@map("trade_reviews")
+}
+
+model TradeRequest {
+  id          String              @id @default(cuid())
+  tradeId     String
+  requesterId String
+  status      TradeRequestStatus  @default(pending)
+  message     String?
+  createdAt   DateTime            @default(now())
+  updatedAt   DateTime            @updatedAt
+
+  trade      Trade @relation(fields: [tradeId], references: [id], onDelete: Cascade)
+  requester  User  @relation("UserTradeRequests", fields: [requesterId], references: [id], onDelete: Cascade)
+
+  @@unique([tradeId, requesterId])
+  @@index([tradeId])
+  @@index([requesterId])
+  @@map("trade_requests")
+}
+
 enum TradeStatus {
   available
   pending
   traded
   active
   completed
+}
+
+enum TradeRequestStatus {
+  pending
   cancelled
 }

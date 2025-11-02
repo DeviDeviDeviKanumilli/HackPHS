@@ -1,7 +1,7 @@
 /**
  * Script to create database indexes for performance
  * Run this once with: npx ts-node scripts/create-indexes.ts
- * Or use the API endpoint at /api/admin/create-indexes (if you create it)
+ * Note: Run this script manually or use Prisma migrations
  */
 
 import { createIndexes } from '../lib/dbIndexes';
