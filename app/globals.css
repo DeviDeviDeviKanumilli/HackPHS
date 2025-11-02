@@ -2,32 +2,147 @@
 @tailwind components;
 @tailwind utilities;
 
-:root {
-  --foreground-rgb: 0, 0, 0;
-  --background-start-rgb: 255, 255, 255;
-  --background-end-rgb: 255, 255, 255;
-}
-
-body {
-  color: rgb(var(--foreground-rgb));
-  background: linear-gradient(
-      to bottom,
-      transparent,
-      rgb(var(--background-end-rgb))
-    )
-    rgb(var(--background-start-rgb));
-}
-
+/* Custom responsive utilities */
 @layer utilities {
-  .text-balance {
-    text-wrap: balance;
+  /* Touch-friendly minimum sizes */
+  .touch-target {
+    min-height: 44px;
+    min-width: 44px;
+  }
+  
+  /* Better touch interactions */
+  .touch-manipulation {
+    touch-action: manipulation;
+  }
+  
+  /* Responsive text sizes */
+  .text-responsive-xs { @apply text-xs sm:text-sm; }
+  .text-responsive-sm { @apply text-sm sm:text-base; }
+  .text-responsive-base { @apply text-base sm:text-lg; }
+  .text-responsive-lg { @apply text-lg sm:text-xl; }
+  .text-responsive-xl { @apply text-xl sm:text-2xl; }
+  .text-responsive-2xl { @apply text-2xl sm:text-3xl; }
+  .text-responsive-3xl { @apply text-2xl sm:text-3xl lg:text-4xl; }
+  
+  /* Responsive spacing */
+  .space-responsive { @apply space-y-3 sm:space-y-4 lg:space-y-6; }
+  .gap-responsive { @apply gap-3 sm:gap-4 lg:gap-6; }
+  .p-responsive { @apply p-3 sm:p-4 lg:p-6; }
+  .px-responsive { @apply px-3 sm:px-4 lg:px-6; }
+  .py-responsive { @apply py-3 sm:py-4 lg:py-6; }
+  .m-responsive { @apply m-3 sm:m-4 lg:m-6; }
+  
+  /* Responsive containers */
+  .container-responsive { 
+    @apply max-w-7xl mx-auto px-3 sm:px-4 md:px-6 lg:px-8 py-6 sm:py-8 lg:py-12; 
+  }
+  
+  /* Responsive grids */
+  .grid-responsive-1 { @apply grid grid-cols-1; }
+  .grid-responsive-2 { @apply grid grid-cols-1 sm:grid-cols-2; }
+  .grid-responsive-3 { @apply grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3; }
+  .grid-responsive-4 { @apply grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4; }
+  
+  /* Form inputs */
+  .input-responsive {
+    @apply w-full px-3 sm:px-4 py-3 sm:py-2 text-base border border-gray-300 rounded-lg 
+           focus:ring-plant-green-500 focus:border-plant-green-500 touch-manipulation;
+  }
+  
+  /* Buttons */
+  .btn-responsive {
+    @apply px-4 sm:px-6 py-3 sm:py-2 text-sm sm:text-base font-medium rounded-lg 
+           transition-colors touch-manipulation min-h-[44px] focus:outline-none 
+           focus:ring-2 focus:ring-offset-2;
+  }
+  
+  .btn-primary {
+    @apply btn-responsive bg-plant-green-600 text-white hover:bg-plant-green-700 
+           focus:ring-plant-green-500;
+  }
+  
+  .btn-secondary {
+    @apply btn-responsive bg-gray-200 text-gray-700 hover:bg-gray-300 
+           focus:ring-gray-500;
+  }
+  
+  /* Cards */
+  .card-responsive {
+    @apply bg-white rounded-lg shadow-md hover:shadow-lg transition-shadow 
+           p-4 sm:p-6;
   }
 }
 
-/* Leaflet map styles */
-.leaflet-container {
-  height: 100%;
-  width: 100%;
-  z-index: 0;
+/* Plant green color palette */
+:root {
+  --plant-green-50: #f0fdf4;
+  --plant-green-100: #dcfce7;
+  --plant-green-200: #bbf7d0;
+  --plant-green-300: #86efac;
+  --plant-green-400: #4ade80;
+  --plant-green-500: #22c55e;
+  --plant-green-600: #16a34a;
+  --plant-green-700: #15803d;
+  --plant-green-800: #166534;
+  --plant-green-900: #14532d;
 }
 
+/* Smooth scrolling */
+html {
+  scroll-behavior: smooth;
+}
+
+/* Better focus indicators for accessibility */
+*:focus-visible {
+  outline: 2px solid var(--plant-green-500);
+  outline-offset: 2px;
+}
+
+/* Improved mobile viewport handling */
+@supports (-webkit-touch-callout: none) {
+  /* iOS Safari specific styles */
+  .min-h-screen {
+    min-height: -webkit-fill-available;
+  }
+}
+
+/* Loading states */
+.loading-pulse {
+  animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: .5;
+  }
+}
+
+/* Better mobile scrolling */
+.scroll-smooth {
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Prevent zoom on iOS form inputs */
+@media screen and (-webkit-min-device-pixel-ratio: 0) {
+  select,
+  textarea,
+  input[type="text"],
+  input[type="password"],
+  input[type="datetime"],
+  input[type="datetime-local"],
+  input[type="date"],
+  input[type="month"],
+  input[type="time"],
+  input[type="week"],
+  input[type="number"],
+  input[type="email"],
+  input[type="url"],
+  input[type="search"],
+  input[type="tel"],
+  input[type="color"] {
+    font-size: 16px;
+  }
+}

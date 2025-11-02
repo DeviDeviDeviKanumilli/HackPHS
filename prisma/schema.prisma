@@ -1,0 +1,182 @@
+// Prisma schema for SproutShare - PostgreSQL database
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+model User {
+  id                   String   @id @default(cuid())
+  username             String   @unique
+  email                String   @unique
+  passwordHash         String
+  joinDate             DateTime @default(now())
+  bio                  String?  @db.VarChar(500)
+  locationZip          String?
+  emailNotifications   Boolean  @default(true)
+  tradeNotifications   Boolean  @default(true)
+  messageNotifications Boolean  @default(true)
+  tradesCompleted      Int      @default(0)
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  // Relationships
+  following        UserFollow[] @relation("UserFollower")
+  followers        UserFollow[] @relation("UserFollowing")
+  plants           Plant[]
+  likedPlants      Plant[]      @relation("PlantLikes")
+  trades           Trade[]
+  sentMessages     Message[]    @relation("SentMessages")
+  receivedMessages Message[]    @relation("ReceivedMessages")
+  forumPosts       ForumPost[]
+
+  @@index([email])
+  @@index([username])
+  @@map("users")
+}
+
+model Plant {
+  id               String      @id @default(cuid())
+  ownerId          String
+  name             String
+  scientificName   String?
+  description      String      @db.Text
+  imageURL         String      @default("/placeholder-plant.jpg")
+  type             String
+  maintenanceLevel String      @default("medium")
+  tradeStatus      TradeStatus @default(available)
+  nativeRegion     String?
+  careTips         String?     @db.Text
+  createdAt        DateTime    @default(now())
+  updatedAt        DateTime    @updatedAt
+
+  // Relationships
+  owner           User    @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  likedBy         User[]  @relation("PlantLikes")
+  offeredTrades   Trade[] @relation("OfferedPlants")
+  requestedTrades Trade[] @relation("RequestedPlants")
+
+  @@index([ownerId])
+  @@index([name])
+  @@index([tradeStatus])
+  @@map("plants")
+}
+
+model Trade {
+  id               String      @id @default(cuid())
+  ownerId          String
+  offeredItem      String
+  requestedItem    String
+  locationZip      String
+  latitude         Float
+  longitude        Float
+  status           TradeStatus @default(active)
+  offeredPlantId   String?
+  requestedPlantId String?
+  createdAt        DateTime    @default(now())
+  updatedAt        DateTime    @updatedAt
+
+  // Relationships
+  owner          User   @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  offeredPlant   Plant? @relation("OfferedPlants", fields: [offeredPlantId], references: [id])
+  requestedPlant Plant? @relation("RequestedPlants", fields: [requestedPlantId], references: [id])
+
+  @@index([ownerId])
+  @@index([status])
+  @@index([latitude, longitude]) // For geospatial bounding box queries
+  @@index([status, latitude, longitude]) // Composite for filtered geospatial queries
+  @@index([status, createdAt]) // For filtered latest trades
+  @@index([createdAt])
+  @@map("trades")
+}
+
+model Message {
+  id         String    @id @default(cuid())
+  senderId   String
+  receiverId String
+  content    String    @db.Text
+  read       Boolean   @default(false)
+  deleted    Boolean   @default(false)
+  deletedAt  DateTime?
+  timestamp  DateTime  @default(now())
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  // Relationships
+  sender   User @relation("SentMessages", fields: [senderId], references: [id], onDelete: Cascade)
+  receiver User @relation("ReceivedMessages", fields: [receiverId], references: [id], onDelete: Cascade)
+
+  @@index([senderId, receiverId]) // For conversation queries
+  @@index([receiverId, read]) // For unread messages
+  @@index([receiverId, deleted, timestamp]) // Composite for active conversations
+  @@index([timestamp])
+  @@index([deleted])
+  @@map("messages")
+}
+
+model ForumPost {
+  id        String   @id @default(cuid())
+  authorId  String
+  title     String
+  content   String
+  category  String   @default("general")
+  timestamp DateTime @default(now())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relationships
+  author  User         @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  replies ForumReply[]
+
+  @@index([authorId])
+  @@index([category])
+  @@index([category, timestamp]) // Composite for category browsing
+  @@index([timestamp])
+  @@map("forum_posts")
+}
+
+model ForumReply {
+  id        String   @id @default(cuid())
+  postId    String
+  userId    String
+  content   String
+  timestamp DateTime @default(now())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relationships
+  post ForumPost @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+  @@index([postId])
+  @@index([userId])
+  @@index([timestamp])
+  @@map("forum_replies")
+}
+
+model UserFollow {
+  id          String   @id @default(cuid())
+  followerId  String
+  followingId String
+  createdAt   DateTime @default(now())
+
+  follower  User @relation("UserFollower", fields: [followerId], references: [id], onDelete: Cascade)
+  following User @relation("UserFollowing", fields: [followingId], references: [id], onDelete: Cascade)
+
+  @@unique([followerId, followingId])
+  @@index([followerId])
+  @@index([followingId])
+  @@map("user_follows")
+}
+
+enum TradeStatus {
+  available
+  pending
+  traded
+  active
+  completed
+  cancelled
+}

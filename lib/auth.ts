@@ -10,10 +10,17 @@ export async function getCurrentUser() {
   }
 }
 
+export class AuthError extends Error {
+  constructor(message: string = 'Unauthorized') {
+    super(message);
+    this.name = 'AuthError';
+  }
+}
+
 export async function requireAuth() {
   const user = await getCurrentUser();
   if (!user) {
-    throw new Error('Unauthorized');
+    throw new AuthError('Unauthorized');
   }
   return user;
 }

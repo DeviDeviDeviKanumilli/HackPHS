@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useSession } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
@@ -26,61 +26,82 @@ export default function MessagesPage() {
   const [conversations, setConversations] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    if (session) {
-      fetchConversations();
-    } else {
-      router.push('/login');
-    }
-  }, [session]);
-
-  const fetchConversations = async () => {
+  const fetchConversations = useCallback(async () => {
     try {
-      const response = await fetch('/api/messages');
+      // Use optimized conversations endpoint
+      const response = await fetch('/api/messages/conversations');
       const data = await response.json();
-      if (response.ok) {
-        // Group messages by conversation
-        const conversationMap = new Map();
-        
-        data.messages?.forEach((message: Message) => {
-          const otherUser =
-            message.senderId._id === session?.user?.id
-              ? message.receiverId
-              : message.senderId;
-          const conversationId =
-            message.senderId._id === session?.user?.id
-              ? message.receiverId._id
-              : message.senderId._id;
-
-          // Count unread messages for this conversation
-          const isUnread = !message.read && message.receiverId._id === session?.user?.id;
+      if (response.ok && data.conversations) {
+        // Map to expected format
+        const formattedConversations = data.conversations.map((conv: any) => ({
+          userId: conv.otherUserId,
+          username: conv.otherUsername,
+          lastMessage: conv.lastMessage || {
+            content: conv.lastMessageContent,
+            timestamp: conv.lastMessageTimestamp,
+            senderId: { _id: '', username: '' },
+            receiverId: { _id: '', username: '' },
+          },
+          unreadCount: conv.unreadCount || 0,
+        }));
+        setConversations(formattedConversations);
+      } else {
+        // Fallback to old endpoint if conversations endpoint fails
+        const fallbackResponse = await fetch('/api/messages');
+        const fallbackData = await fallbackResponse.json();
+        if (fallbackResponse.ok && fallbackData.messages) {
+          // Group messages by conversation
+          const conversationMap = new Map();
           
-          if (!conversationMap.has(conversationId)) {
-            conversationMap.set(conversationId, {
-              userId: otherUser._id,
-              username: otherUser.username,
-              lastMessage: message,
-              unreadCount: isUnread ? 1 : 0,
-            });
-          } else {
-            const existing = conversationMap.get(conversationId);
-            if (new Date(message.timestamp) > new Date(existing.lastMessage.timestamp)) {
-              existing.lastMessage = message;
-            }
-            if (isUnread) {
-              existing.unreadCount = (existing.unreadCount || 0) + 1;
-            }
-          }
-        });
+          fallbackData.messages.forEach((message: Message) => {
+            const otherUser =
+              message.senderId._id === session?.user?.id
+                ? message.receiverId
+                : message.senderId;
+            const conversationId =
+              message.senderId._id === session?.user?.id
+                ? message.receiverId._id
+                : message.senderId._id;
 
-        setConversations(Array.from(conversationMap.values()));
+            const isUnread = !message.read && message.receiverId._id === session?.user?.id;
+            
+            if (!conversationMap.has(conversationId)) {
+              conversationMap.set(conversationId, {
+                userId: otherUser._id,
+                username: otherUser.username,
+                lastMessage: message,
+                unreadCount: isUnread ? 1 : 0,
+              });
+            } else {
+              const existing = conversationMap.get(conversationId);
+              if (existing?.lastMessage && new Date(message.timestamp) > new Date(existing.lastMessage.timestamp)) {
+                existing.lastMessage = message;
+              } else if (!existing?.lastMessage) {
+                existing.lastMessage = message;
+              }
+              if (isUnread) {
+                existing.unreadCount = (existing.unreadCount || 0) + 1;
+              }
+            }
+          });
+
+          setConversations(Array.from(conversationMap.values()));
+        }
       }
     } catch (error) {
       console.error('Error fetching conversations:', error);
     } finally {
       setLoading(false);
     }
-  };
+  }, [session]);
+
+  useEffect(() => {
+    if (session) {
+      fetchConversations();
+    } else {
+      router.push('/login');
+    }
+  }, [session, fetchConversations, router]);
 
   if (!session) {
     return null;
@@ -129,12 +150,14 @@ export default function MessagesPage() {
                       )}
                     </div>
                     <p className="text-gray-600 text-sm truncate">
-                      {conversation.lastMessage.content}
+                      {conversation.lastMessage?.content || 'No messages yet'}
                     </p>
                   </div>
                   <div className="text-right ml-4">
                     <p className="text-xs text-gray-500">
-                      {new Date(conversation.lastMessage.timestamp).toLocaleDateString()}
+                      {conversation.lastMessage?.timestamp 
+                        ? new Date(conversation.lastMessage.timestamp).toLocaleDateString()
+                        : '—'}
                     </p>
                     {conversation.unreadCount > 0 && (
                       <div className="w-2 h-2 bg-plant-green-600 rounded-full mt-1 ml-auto"></div>

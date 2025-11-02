@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import dbConnect from '@/lib/mongodb';
-import Plant from '@/models/Plant';
+import prisma from '@/lib/db';
 import { requireAuth } from '@/lib/auth';
 
 export async function POST(
@@ -12,9 +11,11 @@ export async function POST(
     const resolvedParams = await Promise.resolve(params);
     const plantId = resolvedParams.id;
 
-    await dbConnect();
+    const plant = await prisma.plant.findUnique({
+      where: { id: plantId },
+      include: { likedBy: true },
+    });
 
-    const plant = await Plant.findById(plantId);
     if (!plant) {
       return NextResponse.json(
         { error: 'Plant not found' },
@@ -22,23 +23,39 @@ export async function POST(
       );
     }
 
-    const userId = user.id as string;
-    const likedBy = plant.likedBy.map((id: any) => id.toString());
+    const userId = user.id;
+    const isLiked = plant.likedBy.some((u) => u.id === userId);
 
-    if (likedBy.includes(userId)) {
-      // Unlike
-      plant.likedBy = plant.likedBy.filter(
-        (id: any) => id.toString() !== userId
-      );
+    if (isLiked) {
+      // Unlike - disconnect relation
+      await prisma.plant.update({
+        where: { id: plantId },
+        data: {
+          likedBy: {
+            disconnect: { id: userId },
+          },
+        },
+      });
     } else {
-      // Like
-      plant.likedBy.push(userId);
+      // Like - connect relation
+      await prisma.plant.update({
+        where: { id: plantId },
+        data: {
+          likedBy: {
+            connect: { id: userId },
+          },
+        },
+      });
     }
 
-    await plant.save();
+    // Get updated likes count
+    const updatedPlant = await prisma.plant.findUnique({
+      where: { id: plantId },
+      include: { likedBy: true },
+    });
 
     return NextResponse.json(
-      { liked: !likedBy.includes(userId), likes: plant.likedBy.length },
+      { liked: !isLiked, likes: updatedPlant?.likedBy.length || 0 },
       { status: 200 }
     );
   } catch (error) {

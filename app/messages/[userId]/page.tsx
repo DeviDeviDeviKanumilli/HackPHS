@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState, useRef, useCallback } from 'react';
 import { useParams } from 'next/navigation';
 import { useSession } from 'next-auth/react';
 import { motion } from 'framer-motion';
@@ -32,52 +32,35 @@ export default function ChatPage() {
 
   const otherUserId = params.userId as string;
 
-  useEffect(() => {
-    if (session) {
-      fetchMessages();
-      // Initialize socket connection for real-time updates
-      // In production, use a proper Socket.IO server URL
-      // const newSocket = io(process.env.NEXT_PUBLIC_SOCKET_URL || 'http://localhost:3001');
-      // setSocket(newSocket);
-      // For now, using polling to simulate real-time
-      const interval = setInterval(fetchMessages, 2000);
-      return () => clearInterval(interval);
-    }
-  }, [session, otherUserId]);
-
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
-
-  const fetchMessages = async () => {
+  // Memoize fetchMessages to prevent unnecessary re-renders
+  const fetchMessages = useCallback(async () => {
     try {
       const response = await fetch(`/api/messages?userId=${otherUserId}`);
       const data = await response.json();
       if (response.ok) {
         setMessages(data.messages || []);
-        
-        // Mark messages as read when viewing
-        const unreadMessages = data.messages.filter((msg: Message) => 
-          !msg.read && msg.receiverId._id === session?.user?.id
-        );
-        
-        // Mark unread messages as read
-        for (const msg of unreadMessages) {
-          try {
-            await fetch(`/api/messages/${msg._id}`, {
-              method: 'PATCH',
-            });
-          } catch (err) {
-            console.error('Error marking message as read:', err);
-          }
-        }
       }
     } catch (error) {
       console.error('Error fetching messages:', error);
     } finally {
       setLoading(false);
     }
-  };
+  }, [otherUserId]);
+
+  useEffect(() => {
+    if (session) {
+      fetchMessages();
+      // Poll less frequently to reduce server load
+      const interval = setInterval(fetchMessages, 5000); // Changed from 2s to 5s
+      return () => clearInterval(interval);
+    }
+  }, [session, fetchMessages]);
+
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages]);
+
+  // Removed duplicate - using memoized version above
 
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();

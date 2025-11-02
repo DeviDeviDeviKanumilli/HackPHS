@@ -2,8 +2,7 @@ import NextAuth, { NextAuthOptions } from 'next-auth';
 import CredentialsProvider from 'next-auth/providers/credentials';
 import bcrypt from 'bcryptjs';
 import { NextResponse } from 'next/server';
-import dbConnect from '@/lib/mongodb';
-import User from '@/models/User';
+import prisma from '@/lib/db';
 
 // Check if environment variables are set
 if (!process.env.NEXTAUTH_SECRET) {
@@ -25,14 +24,10 @@ export const authOptions: NextAuthOptions = {
         }
 
         try {
-          // Check MongoDB URI first
-          if (!process.env.MONGODB_URI) {
-            console.error('MONGODB_URI not set');
-            return null;
-          }
-
-          await dbConnect();
-          const user = await User.findOne({ email: credentials.email });
+          const user = await prisma.user.findUnique({
+            where: { email: credentials.email.toLowerCase().trim() },
+            select: { id: true, email: true, username: true, passwordHash: true },
+          });
 
           if (!user) {
             return null;
@@ -48,7 +43,7 @@ export const authOptions: NextAuthOptions = {
           }
 
           return {
-            id: user._id.toString(),
+            id: user.id,
             email: user.email,
             name: user.username,
           };
@@ -87,4 +82,5 @@ export const authOptions: NextAuthOptions = {
 // Initialize NextAuth handler
 const handler = NextAuth(authOptions);
 
+// Export handlers for Next.js 15 App Router
 export { handler as GET, handler as POST };

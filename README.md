@@ -13,10 +13,23 @@ A full-stack application connecting local plant lovers to trade plants, share ca
 
 - **Frontend**: Next.js 15, React, Tailwind CSS, Framer Motion
 - **Backend**: Next.js API Routes
-- **Database**: MongoDB Atlas with Mongoose
+- **Database**: PostgreSQL with Prisma (Supabase/Neon - Production Optimized!)
 - **Auth**: NextAuth.js
 - **Maps**: Leaflet (OpenStreetMap)
 - **Real-time**: Polling-based updates (Socket.IO ready)
+
+### Production Optimizations
+
+- ✅ Connection pooling via Supabase pgbouncer
+- ✅ Optimized queries with selective field selection
+- ✅ Composite indexes for common query patterns
+- ✅ Geospatial query optimization with bounding boxes
+- ✅ Query performance monitoring
+- ✅ Error handling with retry logic
+- ✅ Query result caching
+- ✅ Parallel query execution
+
+See [PRODUCTION_OPTIMIZATIONS.md](./PRODUCTION_OPTIMIZATIONS.md) for details.
 
 ## Setup Instructions
 
@@ -25,29 +38,40 @@ A full-stack application connecting local plant lovers to trade plants, share ca
 npm install
 ```
 
-2. **Set up environment variables:**
-   - Create `.env.local` file in the root directory
-   - Add the following variables (NO SPACES after the equals sign):
-   ```
-   MONGODB_URI=mongodb+srv:
-   NEXTAUTH_URL=
-   NEXTAUTH_SECRET=
-   GOOGLE_MAPS_API_KEY= 
-   ```
-   - Generate a NextAuth secret: `openssl rand -base64 32`
-   - Get MongoDB Atlas connection string from [MongoDB Atlas](https://www.mongodb.com/cloud/atlas)
+2. **Set up database (PostgreSQL):**
+   - **Recommended**: Create a free account at [Supabase](https://supabase.com) or use [Neon](https://neon.tech)
+   - Create a new project and copy your connection string
+   - Or use any PostgreSQL provider (Railway, Render, etc.)
 
-3. **Set up Leaflet marker images:**
+3. **Set up environment variables:**
+   - Create `.env.local` file in the root directory (or update existing one)
+   - Add your PostgreSQL connection string:
+   ```
+   DATABASE_URL=postgresql://postgres:[PASSWORD]@[HOST]:5432/[DATABASE]?schema=public
+   ```
+   - For Supabase, the format is:
+   ```
+   DATABASE_URL=postgresql://postgres.[PROJECT-REF]:[PASSWORD]@aws-0-[REGION].pooler.supabase.com:6543/postgres?pgbouncer=true
+   ```
+
+4. **Initialize database:**
+   ```bash
+   npx prisma generate
+   npx prisma db push
+   ```
+   This creates all tables in your PostgreSQL database.
+
+5. **Set up Leaflet marker images:**
    - Download Leaflet default marker images from [GitHub](https://github.com/leaflet/leaflet/tree/master/dist/images)
    - Place `marker-icon.png`, `marker-icon-2x.png`, and `marker-shadow.png` in `public/leaflet/` directory
    - See `public/leaflet/README.md` for details
 
-4. **Run the development server:**
+6. **Run the development server:**
 ```bash
 npm run dev
 ```
 
-5. **Open your browser:**
+7. **Open your browser:**
    - Navigate to [http://localhost:3000](http://localhost:3000)
 
 ## Project Structure
@@ -67,8 +91,10 @@ npm run dev
 ├── lib/                     # Utilities and configurations
 │   ├── auth.ts              # Authentication helpers
 │   ├── geocoding.ts         # Zip to coordinates conversion
-│   └── mongodb.ts           # MongoDB connection
-├── models/                  # MongoDB Mongoose models
+│   └── db.ts                # PostgreSQL Prisma connection
+├── prisma/                  # Database schema and migrations
+│   └── schema.prisma        # Prisma schema definition
+├── models/                  # Legacy Mongoose models (being migrated)
 │   ├── User.ts              # User model
 │   ├── Plant.ts             # Plant model
 │   ├── Trade.ts             # Trade model
@@ -80,10 +106,19 @@ npm run dev
 
 ## Environment Variables
 
-- `MONGODB_URI` - MongoDB Atlas connection string (required)
-- `NEXTAUTH_URL` - Base URL for authentication (required, e.g., `http://localhost:3000`)
+- `DATABASE_URL` - PostgreSQL connection string (required) - Get from Supabase, Neon, or your PostgreSQL provider
+- `NEXTAUTH_URL` - Base URL for authentication (default: `http://localhost:3000`)
 - `NEXTAUTH_SECRET` - Secret for NextAuth.js (required, generate with `openssl rand -base64 32`)
 - `GOOGLE_MAPS_API_KEY` - Google Maps API key for enhanced geocoding (optional)
+
+## Database
+
+This project uses **PostgreSQL** - a powerful, production-ready relational database:
+- ✅ **High performance** - Optimized for complex queries and large datasets
+- ✅ **ACID compliance** - Full transaction support
+- ✅ **Scalable** - Handles concurrent users efficiently
+- ✅ **Production-ready** - Industry standard for web applications
+- ✅ **Rich features** - Full-text search, JSON support, and more
 
 ## Key Features Explained
 

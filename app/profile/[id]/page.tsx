@@ -121,11 +121,11 @@ export default function ProfilePage() {
             )}
             <div className="flex space-x-6 text-gray-600">
               <div>
-                <span className="font-semibold">{user.followers?.length || 0}</span>{' '}
+                <span className="font-semibold">{user.followerCount ?? (user.followers?.length || 0)}</span>{' '}
                 Followers
               </div>
               <div>
-                <span className="font-semibold">{user.following?.length || 0}</span>{' '}
+                <span className="font-semibold">{user.followingCount ?? (user.following?.length || 0)}</span>{' '}
                 Following
               </div>
               <div>

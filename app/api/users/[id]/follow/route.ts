@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import dbConnect from '@/lib/mongodb';
-import User from '@/models/User';
+import prisma from '@/lib/db';
 import { requireAuth } from '@/lib/auth';
 
 export async function POST(
@@ -19,10 +18,11 @@ export async function POST(
       );
     }
 
-    await dbConnect();
-
-    const currentUserDoc = await User.findById(currentUser.id);
-    const targetUserDoc = await User.findById(targetUserId);
+    // Check if users exist
+    const [currentUserDoc, targetUserDoc] = await Promise.all([
+      prisma.user.findUnique({ where: { id: currentUser.id } }),
+      prisma.user.findUnique({ where: { id: targetUserId } }),
+    ]);
 
     if (!currentUserDoc || !targetUserDoc) {
       return NextResponse.json(
@@ -31,32 +31,47 @@ export async function POST(
       );
     }
 
-    const isFollowing = currentUserDoc.following.some(
-      (id: any) => id.toString() === targetUserId
-    );
+    // Check if already following
+    const existingFollow = await prisma.userFollow.findUnique({
+      where: {
+        followerId_followingId: {
+          followerId: currentUser.id,
+          followingId: targetUserId,
+        },
+      },
+    });
 
-    if (isFollowing) {
+    if (existingFollow) {
       // Unfollow
-      currentUserDoc.following = currentUserDoc.following.filter(
-        (id: any) => id.toString() !== targetUserId
-      );
-      targetUserDoc.followers = targetUserDoc.followers.filter(
-        (id: any) => id.toString() !== currentUser.id
-      );
+      await prisma.userFollow.delete({
+        where: {
+          followerId_followingId: {
+            followerId: currentUser.id,
+            followingId: targetUserId,
+          },
+        },
+      });
     } else {
       // Follow
-      currentUserDoc.following.push(targetUserId);
-      targetUserDoc.followers.push(currentUser.id);
+      await prisma.userFollow.create({
+        data: {
+          followerId: currentUser.id,
+          followingId: targetUserId,
+        },
+      });
     }
 
-    await currentUserDoc.save();
-    await targetUserDoc.save();
+    // Get updated counts
+    const [followersCount, followingCount] = await Promise.all([
+      prisma.userFollow.count({ where: { followingId: targetUserId } }),
+      prisma.userFollow.count({ where: { followerId: currentUser.id } }),
+    ]);
 
     return NextResponse.json(
       {
-        following: !isFollowing,
-        followersCount: targetUserDoc.followers.length,
-        followingCount: currentUserDoc.following.length,
+        following: !existingFollow,
+        followersCount,
+        followingCount,
       },
       { status: 200 }
     );

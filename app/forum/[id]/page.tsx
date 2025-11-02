@@ -40,22 +40,17 @@ export default function PostPage() {
 
   useEffect(() => {
     fetchPost();
-    // Poll for updates
-    const interval = setInterval(fetchPost, 3000);
+    // Poll for updates less frequently
+    const interval = setInterval(fetchPost, 10000); // Changed from 3s to 10s
     return () => clearInterval(interval);
   }, [postId]);
 
   const fetchPost = async () => {
     try {
-      // In a real app, you'd have a GET endpoint for a single post
-      // For now, fetching all and filtering
-      const response = await fetch('/api/forum');
+      const response = await fetch(`/api/forum/${postId}`);
       const data = await response.json();
-      if (response.ok) {
-        const foundPost = data.posts.find((p: ForumPost) => p._id === postId);
-        if (foundPost) {
-          setPost(foundPost);
-        }
+      if (response.ok && data.post) {
+        setPost(data.post);
       }
     } catch (error) {
       console.error('Error fetching post:', error);

@@ -1,8 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import dbConnect from '@/lib/mongodb';
-import Message from '@/models/Message';
-import User from '@/models/User';
-import { requireAuth } from '@/lib/auth';
+import prisma from '@/lib/db';
+import { requireAuth, AuthError } from '@/lib/auth';
 import {
   sanitizeMessage,
   validateMessage,
@@ -10,53 +8,115 @@ import {
   checkRateLimit,
   isValidObjectId,
 } from '@/lib/messageSecurity';
+import { apiCache, getCacheTTL, generateKey } from '@/lib/apiCache';
 
 export async function GET(request: NextRequest) {
   try {
     const user = await requireAuth();
-    await dbConnect();
 
-    const { searchParams } = new URL(request.url);
+    const url = new URL(request.url);
+    const searchParams = url.searchParams;
     const otherUserId = searchParams.get('userId');
+    const limit = Math.min(parseInt(searchParams.get('limit') || '50'), 100); // Cap at 100
+    const skip = parseInt(searchParams.get('skip') || '0');
 
-    // Validate otherUserId if provided
-    if (otherUserId && !isValidObjectId(otherUserId)) {
+    // If no otherUserId, return empty - conversations should use /api/messages/conversations
+    if (!otherUserId) {
       return NextResponse.json(
-        { error: 'Invalid user ID format' },
+        { messages: [], error: 'Use /api/messages/conversations for conversations list' },
         { status: 400 }
       );
     }
 
-    let query: any;
-    
-    if (otherUserId) {
-      // Get messages between current user and other user
-      // Security: Only show messages where current user is sender or receiver
-      query = {
-        $or: [
-          { senderId: user.id, receiverId: otherUserId },
-          { senderId: otherUserId, receiverId: user.id },
-        ],
-      };
-    } else {
-      // Get all conversations for current user
-      query = {
-        $or: [{ senderId: user.id }, { receiverId: user.id }],
-      };
+    // Cache key for specific conversation
+    const cacheKey = generateKey(url.pathname, Object.fromEntries(searchParams.entries()));
+    const cached = apiCache.get(cacheKey);
+    if (cached) {
+      return NextResponse.json(cached, {
+        status: 200,
+        headers: {
+          'X-Cache': 'HIT',
+          'Cache-Control': 'private, max-age=5, stale-while-revalidate=10',
+        },
+      });
     }
 
-    const messages = await Message.find({
-      ...query,
-      deleted: { $ne: true }, // Don't show deleted messages
-    })
-      .populate('senderId', 'username')
-      .populate('receiverId', 'username')
-      .sort({ timestamp: 1 })
-      .limit(100); // Limit to prevent abuse
+    const where: any = {
+      deleted: false,
+    };
+    
+    if (otherUserId) {
+      // Get messages between current user and other user - optimized query
+      where.OR = [
+        { senderId: user.id, receiverId: otherUserId },
+        { senderId: otherUserId, receiverId: user.id },
+      ];
+    } else {
+      // This shouldn't happen now, but keep as fallback
+      where.OR = [
+        { senderId: user.id },
+        { receiverId: user.id },
+      ];
+    }
 
-    return NextResponse.json({ messages }, { status: 200 });
+    // Optimize: Fetch messages in ascending order for conversation view
+    // This uses index more efficiently and avoids reverse()
+    const messages = await prisma.message.findMany({
+      where,
+      select: {
+        id: true,
+        senderId: true,
+        receiverId: true,
+        content: true,
+        read: true,
+        deleted: true,
+        timestamp: true,
+        createdAt: true,
+        sender: {
+          select: { id: true, username: true },
+        },
+        receiver: {
+          select: { id: true, username: true },
+        },
+      },
+      orderBy: { timestamp: 'asc' }, // Ascending for chronological order in conversation
+      take: limit,
+      skip,
+    });
+
+    const formattedMessages = messages.map(({ sender, receiver, ...message }) => ({
+      ...message,
+      senderId: {
+        _id: sender.id,
+        username: sender.username,
+      },
+      receiverId: {
+        _id: receiver.id,
+        username: receiver.username,
+      },
+    }));
+
+    const response = { messages: formattedMessages };
+
+    // Cache for 5 seconds (messages update frequently)
+    const ttl = 5000;
+    apiCache.set(cacheKey, response, ttl);
+
+    return NextResponse.json(response, {
+      status: 200,
+      headers: {
+        'X-Cache': 'MISS',
+        'Cache-Control': 'private, max-age=5, stale-while-revalidate=10',
+      },
+    });
   } catch (error) {
     console.error('Error fetching messages:', error);
+    if (error instanceof AuthError) {
+      return NextResponse.json(
+        { error: 'Unauthorized' },
+        { status: 401 }
+      );
+    }
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }
@@ -118,10 +178,11 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    await dbConnect();
-
     // Verify receiver exists
-    const receiver = await User.findById(receiverId);
+    const receiver = await prisma.user.findUnique({
+      where: { id: receiverId },
+      select: { id: true },
+    });
     if (!receiver) {
       return NextResponse.json(
         { error: 'Receiver not found' },
@@ -132,20 +193,44 @@ export async function POST(request: NextRequest) {
     // Sanitize content before storing
     const sanitizedContent = sanitizeMessage(content);
 
-    const message = await Message.create({
-      senderId: user.id,
-      receiverId,
-      content: sanitizedContent,
-      read: false,
+    const message = await prisma.message.create({
+      data: {
+        senderId: user.id,
+        receiverId,
+        content: sanitizedContent,
+        read: false,
+      },
+      include: {
+        sender: {
+          select: { id: true, username: true },
+        },
+        receiver: {
+          select: { id: true, username: true },
+        },
+      },
     });
 
-    const populatedMessage = await Message.findById(message._id)
-      .populate('senderId', 'username')
-      .populate('receiverId', 'username');
+    const populatedMessage = {
+      ...message,
+      senderId: {
+        _id: message.sender.id,
+        username: message.sender.username,
+      },
+      receiverId: {
+        _id: message.receiver.id,
+        username: message.receiver.username,
+      },
+    };
 
     return NextResponse.json({ message: populatedMessage }, { status: 201 });
   } catch (error) {
     console.error('Error creating message:', error);
+    if (error instanceof AuthError) {
+      return NextResponse.json(
+        { error: 'Unauthorized' },
+        { status: 401 }
+      );
+    }
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }

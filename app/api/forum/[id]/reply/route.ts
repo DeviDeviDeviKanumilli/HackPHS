@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import dbConnect from '@/lib/mongodb';
-import ForumPost from '@/models/ForumPost';
+import prisma from '@/lib/db';
 import { requireAuth } from '@/lib/auth';
 
 export async function POST(
@@ -20,9 +19,11 @@ export async function POST(
       );
     }
 
-    await dbConnect();
+    // Verify post exists
+    const post = await prisma.forumPost.findUnique({
+      where: { id: postId },
+    });
 
-    const post = await ForumPost.findById(postId);
     if (!post) {
       return NextResponse.json(
         { error: 'Post not found' },
@@ -30,19 +31,35 @@ export async function POST(
       );
     }
 
-    post.replies.push({
-      userId: user.id,
-      content,
-      timestamp: new Date(),
+    // Create reply
+    const reply = await prisma.forumReply.create({
+      data: {
+        postId,
+        userId: user.id,
+        content,
+      },
     });
 
-    await post.save();
+    // Get populated post
+    const populatedPost = await prisma.forumPost.findUnique({
+      where: { id: postId },
+      include: {
+        author: {
+          select: { id: true, username: true },
+        },
+        replies: true,
+      },
+    });
 
-    const populatedPost = await ForumPost.findById(post._id)
-      .populate('authorId', 'username')
-      .populate('replies.userId', 'username');
+    const formattedPost = populatedPost ? {
+      ...populatedPost,
+      authorId: {
+        _id: populatedPost.author.id,
+        username: populatedPost.author.username,
+      },
+    } : null;
 
-    return NextResponse.json({ post: populatedPost }, { status: 200 });
+    return NextResponse.json({ post: formattedPost }, { status: 200 });
   } catch (error) {
     console.error('Error adding reply:', error);
     return NextResponse.json(

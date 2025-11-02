@@ -111,9 +111,12 @@ export function checkRateLimit(userId: string, maxMessages: number = 10, windowM
 }
 
 /**
- * Validate user ID format (MongoDB ObjectId)
+ * Validate user ID format (Prisma CUID format)
+ * CUID format: starts with 'c' followed by base36 characters, length 25
  */
 export function isValidObjectId(id: string): boolean {
-  return /^[0-9a-fA-F]{24}$/.test(id);
+  if (!id || typeof id !== 'string') return false;
+  // Prisma CUID format: starts with 'c' followed by base36, length 25
+  return /^c[a-z0-9]{24}$/.test(id);
 }
 

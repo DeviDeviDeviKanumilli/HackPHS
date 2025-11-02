@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import dbConnect from '@/lib/mongodb';
-import Message from '@/models/Message';
+import prisma from '@/lib/db';
 import { requireAuth } from '@/lib/auth';
 import { isValidObjectId } from '@/lib/messageSecurity';
 
@@ -23,10 +22,11 @@ export async function PATCH(
       );
     }
 
-    await dbConnect();
-
     // Find message and verify user is the receiver
-    const message = await Message.findById(messageId);
+    const message = await prisma.message.findUnique({
+      where: { id: messageId },
+    });
+
     if (!message) {
       return NextResponse.json(
         { error: 'Message not found' },
@@ -35,15 +35,17 @@ export async function PATCH(
     }
 
     // Security: Only the receiver can mark message as read
-    if (message.receiverId.toString() !== user.id) {
+    if (message.receiverId !== user.id) {
       return NextResponse.json(
         { error: 'Unauthorized: Only the receiver can mark message as read' },
         { status: 403 }
       );
     }
 
-    message.read = true;
-    await message.save();
+    await prisma.message.update({
+      where: { id: messageId },
+      data: { read: true },
+    });
 
     return NextResponse.json(
       { message: 'Message marked as read', read: true },
@@ -77,10 +79,11 @@ export async function DELETE(
       );
     }
 
-    await dbConnect();
-
     // Find message and verify user is the sender
-    const message = await Message.findById(messageId);
+    const message = await prisma.message.findUnique({
+      where: { id: messageId },
+    });
+
     if (!message) {
       return NextResponse.json(
         { error: 'Message not found' },
@@ -89,7 +92,7 @@ export async function DELETE(
     }
 
     // Security: Only the sender can delete their message
-    if (message.senderId.toString() !== user.id) {
+    if (message.senderId !== user.id) {
       return NextResponse.json(
         { error: 'Unauthorized: Only the sender can delete this message' },
         { status: 403 }
@@ -97,9 +100,13 @@ export async function DELETE(
     }
 
     // Soft delete the message (mark as deleted rather than removing)
-    message.deleted = true;
-    message.deletedAt = new Date();
-    await message.save();
+    await prisma.message.update({
+      where: { id: messageId },
+      data: {
+        deleted: true,
+        deletedAt: new Date(),
+      },
+    });
 
     return NextResponse.json(
       { message: 'Message deleted successfully' },
