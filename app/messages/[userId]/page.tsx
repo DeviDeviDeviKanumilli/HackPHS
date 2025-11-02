@@ -114,11 +114,13 @@ export default function ChatPage() {
               No messages yet. Start the conversation!
             </div>
           ) : (
-            messages.map((message) => {
+            messages.map((message, index) => {
               const isSender = message.senderId._id === session.user?.id;
+              // Ensure we have a unique, stable key
+              const messageKey = message._id || `message-${index}-${message.timestamp}`;
               return (
                 <div
-                  key={message._id}
+                  key={messageKey}
                   className={`flex ${isSender ? 'justify-end' : 'justify-start'}`}
                 >
                   <div

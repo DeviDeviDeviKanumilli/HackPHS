@@ -118,6 +118,7 @@ export async function GET(request: NextRequest) {
           tradeStatus: true,
           idealTemp: true,
           sunlight: true,
+          tags: true,
           createdAt: true,
         },
         orderBy: { createdAt: 'desc' },
@@ -198,6 +199,7 @@ export async function POST(request: NextRequest) {
         tradeStatus: plantData.tradeStatus || 'available',
         idealTemp: plantData.idealTemp || null,
         sunlight: plantData.sunlight || null,
+        tags: plantData.tags || [],
       },
     });
 

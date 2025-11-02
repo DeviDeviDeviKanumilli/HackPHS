@@ -72,7 +72,7 @@ npm run dev
 ```
 
 7. **Open your browser:**
-   - Navigate to [http://sproutshare.tech](http://sproutshare.tech)
+   - Navigate to [http://localhost:3000](http://localhost:3000)
 
 ## Project Structure
 

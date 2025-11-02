@@ -80,12 +80,15 @@ export async function GET(request: NextRequest) {
     const posts = results[0] as typeof results[0];
     const total = includeCount ? (results[1] as number) : undefined;
 
-    const formattedPosts = posts.map(({ author, ...post }) => ({
+    const formattedPosts = posts.map(({ author, _count, ...post }) => ({
       ...post,
+      _id: post.id,
+      timestamp: post.timestamp.toISOString(),
       authorId: {
         _id: author.id,
         username: author.username,
       },
+      replies: new Array(_count.replies).fill(null), // Create array with replies count for length property
     }));
 
     const response = {

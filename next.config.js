@@ -1,6 +1,10 @@
 /** @type {import('next').NextConfig} */
+const path = require('path');
+
 const nextConfig = {
   reactStrictMode: true,
+  // Set the root directory to silence lockfile warnings
+  outputFileTracingRoot: path.join(__dirname),
   images: {
     domains: ['localhost', 'res.cloudinary.com', 'images.unsplash.com'],
     formats: ['image/avif', 'image/webp'],
@@ -8,8 +12,6 @@ const nextConfig = {
     imageSizes: [16, 32, 48, 64, 96, 128, 256, 384],
     minimumCacheTTL: 60,
   },
-  // Optimize bundle size
-  swcMinify: true,
   compiler: {
     removeConsole: process.env.NODE_ENV === 'production' ? {
       exclude: ['error', 'warn'],

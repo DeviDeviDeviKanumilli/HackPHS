@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useRef, useCallback } from 'react';
+import { useEffect, useState, useRef, useMemo } from 'react';
 import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
@@ -85,14 +85,16 @@ function MapUpdater({ trades, userLocation }: MapViewProps) {
 
 export default function MapView({ trades, userLocation }: MapViewProps) {
   const [isClient, setIsClient] = useState(false);
-  const [mapKey, setMapKey] = useState(0);
+  const [mapKey] = useState(() => `map-${Date.now()}-${Math.random()}`);
   const mapRef = useRef<L.Map | null>(null);
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const containerIdRef = useRef(`map-container-${Date.now()}-${Math.random()}`);
 
   // Default center (US center)
   const defaultCenter: [number, number] = [39.8283, -98.5795];
   
   // Calculate center based on trades or user location
-  const center: [number, number] = useCallback(() => {
+  const center: [number, number] = useMemo(() => {
     if (userLocation) {
       return [userLocation.lat, userLocation.lng];
     }
@@ -100,26 +102,28 @@ export default function MapView({ trades, userLocation }: MapViewProps) {
       return [trades[0].coordinates.lat, trades[0].coordinates.lng];
     }
     return defaultCenter;
-  }, [trades, userLocation])();
+  }, [trades, userLocation]);
 
   useEffect(() => {
     setIsClient(true);
   }, []);
 
-  // Force re-render when critical props change to prevent initialization errors
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      setMapKey(prev => prev + 1);
-    }, 100);
-    
-    return () => clearTimeout(timer);
-  }, [trades.length, userLocation?.lat, userLocation?.lng]);
-
-  // Cleanup on unmount
+  // Cleanup map instance properly on unmount
   useEffect(() => {
     return () => {
       if (mapRef.current) {
-        mapRef.current.remove();
+        try {
+          // More thorough cleanup
+          const map = mapRef.current;
+          if (map._container) {
+            // Remove all event listeners
+            map.off();
+            // Remove the map from DOM
+            map.remove();
+          }
+        } catch (error) {
+          // Map might already be removed, ignore silently
+        }
         mapRef.current = null;
       }
     };
@@ -134,7 +138,11 @@ export default function MapView({ trades, userLocation }: MapViewProps) {
   }
 
   return (
-    <div className="relative w-full h-full rounded-lg overflow-hidden bg-gray-100">
+    <div 
+      ref={containerRef}
+      id={containerIdRef.current}
+      className="relative w-full h-full rounded-lg overflow-hidden bg-gray-100"
+    >
       <MapContainer
         key={mapKey}
         center={center}
@@ -143,9 +151,39 @@ export default function MapView({ trades, userLocation }: MapViewProps) {
         className="rounded-lg z-0"
         scrollWheelZoom={true}
         zoomControl={true}
-        ref={(mapInstance) => {
-          if (mapInstance) {
+        whenCreated={(mapInstance) => {
+          // Prevent double initialization from React Strict Mode
+          // Check if this container already has a Leaflet map instance
+          const container = document.getElementById(containerIdRef.current);
+          if (container) {
+            const existingMap = (container as any)._leaflet_id;
+            if (existingMap && mapRef.current && mapRef.current !== mapInstance) {
+              // Another map instance exists, destroy it first
+              try {
+                const oldMap = mapRef.current;
+                if (oldMap && oldMap._container) {
+                  oldMap.off();
+                  oldMap.remove();
+                }
+              } catch (error) {
+                // Ignore cleanup errors
+              }
+            }
+          }
+          
+          // Only set reference if this is a new instance
+          if (!mapRef.current || mapRef.current === mapInstance) {
             mapRef.current = mapInstance;
+          } else {
+            // If we have a different instance, destroy this one
+            try {
+              if (mapInstance._container) {
+                mapInstance.off();
+                mapInstance.remove();
+              }
+            } catch (error) {
+              // Ignore
+            }
           }
         }}
       >

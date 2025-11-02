@@ -40,24 +40,56 @@ export async function POST(
       },
     });
 
-    // Get populated post
+    // Get populated post with formatted replies
     const populatedPost = await prisma.forumPost.findUnique({
       where: { id: postId },
       include: {
         author: {
           select: { id: true, username: true },
         },
-        replies: true,
+        replies: {
+          orderBy: { timestamp: 'asc' },
+        },
       },
     });
 
-    const formattedPost = populatedPost ? {
+    if (!populatedPost) {
+      return NextResponse.json(
+        { error: 'Post not found' },
+        { status: 404 }
+      );
+    }
+
+    // Format replies with user info and IDs
+    const formattedReplies = await Promise.all(
+      populatedPost.replies.map(async (reply) => {
+        const user = await prisma.user.findUnique({
+          where: { id: reply.userId },
+          select: { id: true, username: true },
+        });
+        return {
+          id: reply.id,
+          _id: reply.id,
+          userId: {
+            _id: reply.userId,
+            username: user?.username || 'Unknown',
+          },
+          content: reply.content,
+          timestamp: reply.timestamp.toISOString(),
+        };
+      })
+    );
+
+    const formattedPost = {
       ...populatedPost,
+      _id: populatedPost.id,
       authorId: {
         _id: populatedPost.author.id,
         username: populatedPost.author.username,
       },
-    } : null;
+      replies: formattedReplies,
+      timestamp: populatedPost.timestamp.toISOString(),
+    };
 
     return NextResponse.json({ post: formattedPost }, { status: 200 });
   } catch (error) {

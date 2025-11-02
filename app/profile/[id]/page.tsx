@@ -122,27 +122,36 @@ export default function ProfilePage() {
   const joinDate = new Date(user.joinDate).toLocaleDateString();
 
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="bg-white rounded-2xl shadow-lg p-8 mb-8"
-      >
+    <div className="min-h-screen bg-gradient-to-br from-green-50 via-emerald-50 to-teal-50 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl p-8 mb-8 border border-gray-100 dark:border-gray-700"
+        >
         <div className="flex flex-col md:flex-row md:items-center md:justify-between">
           <div className="flex items-start space-x-4">
             {user.profilePicture ? (
-              <img
+              <motion.img
                 src={user.profilePicture}
                 alt={user.username}
-                className="w-20 h-20 rounded-full object-cover border-2 border-plant-green-500 flex-shrink-0"
+                initial={{ scale: 0 }}
+                animate={{ scale: 1 }}
+                transition={{ type: "spring", delay: 0.2 }}
+                className="w-24 h-24 rounded-full object-cover border-4 border-plant-green-500 dark:border-emerald-500 flex-shrink-0 shadow-lg"
               />
             ) : (
-              <div className="w-20 h-20 rounded-full bg-gray-200 flex items-center justify-center border-2 border-gray-300 flex-shrink-0">
-                <span className="text-3xl">👤</span>
-              </div>
+              <motion.div
+                initial={{ scale: 0 }}
+                animate={{ scale: 1 }}
+                transition={{ type: "spring", delay: 0.2 }}
+                className="w-24 h-24 rounded-full bg-gradient-to-br from-plant-green-100 to-emerald-100 dark:from-gray-700 dark:to-gray-600 flex items-center justify-center border-4 border-plant-green-500 dark:border-emerald-500 flex-shrink-0 shadow-lg"
+              >
+                <span className="text-4xl">👤</span>
+              </motion.div>
             )}
             <div>
-              <h1 className="text-4xl font-bold text-plant-green-800 mb-2">
+              <h1 className="text-4xl md:text-5xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-plant-green-600 to-emerald-500 mb-2">
                 {user.username}
               </h1>
             <p className="text-gray-600 mb-4">
@@ -172,13 +181,15 @@ export default function ProfilePage() {
           <div className="flex flex-col md:flex-row gap-3 mt-4 md:mt-0">
             {!isOwnProfile && session && (
               <>
-                <button
+                <motion.button
                   onClick={handleFollow}
                   disabled={followingLoading}
-                  className={`px-6 py-2 rounded-lg font-semibold transition-colors ${
+                  whileHover={{ scale: 1.05 }}
+                  whileTap={{ scale: 0.95 }}
+                  className={`px-6 py-3 rounded-xl font-semibold transition-all ${
                     isFollowing
-                      ? 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-                      : 'bg-plant-green-600 text-white hover:bg-plant-green-700'
+                      ? 'bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-300 dark:hover:bg-gray-600'
+                      : 'bg-gradient-to-r from-plant-green-600 to-emerald-500 text-white hover:shadow-lg'
                   }`}
                 >
                   {followingLoading
@@ -186,10 +197,10 @@ export default function ProfilePage() {
                     : isFollowing
                     ? 'Following'
                     : 'Follow'}
-                </button>
+                </motion.button>
                 <Link
                   href={`/messages/${userId}`}
-                  className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-semibold text-center"
+                  className="px-6 py-3 bg-gradient-to-r from-blue-600 to-cyan-500 text-white rounded-xl hover:shadow-lg transition-all font-semibold text-center transform hover:scale-105"
                 >
                   💬 Message
                 </Link>
@@ -198,7 +209,7 @@ export default function ProfilePage() {
             {isOwnProfile && (
               <Link
                 href="/profile/edit"
-                className="px-6 py-2 bg-plant-green-600 text-white rounded-lg hover:bg-plant-green-700 transition-colors font-semibold text-center"
+                className="px-6 py-3 bg-gradient-to-r from-plant-green-600 to-emerald-500 text-white rounded-xl hover:shadow-lg transition-all font-semibold text-center transform hover:scale-105"
               >
                 Edit Profile
               </Link>
@@ -209,9 +220,14 @@ export default function ProfilePage() {
 
       {/* Plant Images Section */}
       {user.plantImages && user.plantImages.length > 0 && (
-        <div className="mt-8">
-          <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-lg p-6">
-            <h2 className="text-2xl font-bold text-plant-green-800 dark:text-plant-green-200 mb-4">
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.3 }}
+          className="mt-8"
+        >
+          <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl p-6 border border-gray-100 dark:border-gray-700">
+            <h2 className="text-3xl font-bold text-plant-green-800 dark:text-plant-green-200 mb-6 bg-clip-text text-transparent bg-gradient-to-r from-plant-green-600 to-emerald-500">
               🌿 Plant Gallery
             </h2>
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
@@ -220,18 +236,21 @@ export default function ProfilePage() {
                   key={index}
                   initial={{ opacity: 0, scale: 0.9 }}
                   animate={{ opacity: 1, scale: 1 }}
-                  className="relative group aspect-square"
+                  transition={{ delay: index * 0.1 }}
+                  whileHover={{ scale: 1.05 }}
+                  className="relative group aspect-square rounded-xl overflow-hidden shadow-lg hover:shadow-xl transition-all"
                 >
                   <img
                     src={imageUrl}
                     alt={`Plant ${index + 1}`}
-                    className="w-full h-full object-cover rounded-lg border-2 border-gray-200 dark:border-gray-700"
+                    className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-300"
                   />
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/40 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
                 </motion.div>
               ))}
             </div>
           </div>
-        </div>
+        </motion.div>
       )}
 
       {/* Reviews Section - Made More Prominent */}
@@ -347,6 +366,7 @@ export default function ProfilePage() {
             </div>
           )}
         </div>
+      </div>
       </div>
     </div>
   );

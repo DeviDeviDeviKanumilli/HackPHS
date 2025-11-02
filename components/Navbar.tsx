@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useSession, signOut } from 'next-auth/react';
 import { usePathname, useRouter } from 'next/navigation';
 import { useState, useEffect } from 'react';
+import { Settings, Mail } from 'lucide-react';
 
 export default function Navbar() {
   const { data: session, status } = useSession();
@@ -11,6 +12,7 @@ export default function Navbar() {
   const router = useRouter();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [mounted, setMounted] = useState(false);
+  const [unreadCount, setUnreadCount] = useState(0);
 
   // Prevent hydration mismatch
   useEffect(() => {
@@ -21,6 +23,29 @@ export default function Navbar() {
   useEffect(() => {
     setMobileMenuOpen(false);
   }, [pathname]);
+
+  // Fetch unread message count
+  useEffect(() => {
+    if (session?.user?.id) {
+      const fetchUnreadCount = async () => {
+        try {
+          const response = await fetch('/api/messages/conversations');
+          if (response.ok) {
+            const data = await response.json();
+            const totalUnread = data.conversations?.reduce((sum: number, conv: any) => sum + (conv.unreadCount || 0), 0) || 0;
+            setUnreadCount(totalUnread);
+          }
+        } catch (error) {
+          console.error('Error fetching unread count:', error);
+        }
+      };
+
+      fetchUnreadCount();
+      // Poll for updates every 30 seconds
+      const interval = setInterval(fetchUnreadCount, 30000);
+      return () => clearInterval(interval);
+    }
+  }, [session]);
 
   const handleSignOut = async () => {
     try {
@@ -46,11 +71,11 @@ export default function Navbar() {
     { href: '/library', label: 'Plant Library' },
     { href: '/trades', label: 'Trades' },
     { href: '/forum', label: 'Forum' },
+    { href: '/tips', label: 'Tips' },
   ];
 
   const authNavLinks = [
     { href: '/my-trades', label: 'My Trades' },
-    { href: '/messages', label: 'Messages' },
   ];
 
   if (!mounted) {
@@ -131,6 +156,22 @@ export default function Navbar() {
                   </Link>
                 )}
                 <Link
+                  href="/messages"
+                  className={`relative px-3 py-2 rounded-md text-sm font-medium transition-colors ${
+                    isActive('/messages')
+                      ? 'text-plant-green-600 dark:text-plant-green-400 bg-plant-green-50 dark:bg-plant-green-900/30'
+                      : 'text-gray-700 dark:text-gray-300 hover:text-plant-green-600 dark:hover:text-plant-green-400 hover:bg-gray-50 dark:hover:bg-gray-700/50'
+                  }`}
+                  title="Messages"
+                >
+                  <Mail className="w-5 h-5" />
+                  {unreadCount > 0 && (
+                    <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs font-bold rounded-full w-5 h-5 flex items-center justify-center">
+                      {unreadCount > 99 ? '99+' : unreadCount}
+                    </span>
+                  )}
+                </Link>
+                <Link
                   href="/settings"
                   className={`px-3 py-2 rounded-md text-sm font-medium transition-colors ${
                     isActive('/settings')
@@ -139,7 +180,7 @@ export default function Navbar() {
                   }`}
                   title="Settings"
                 >
-                  ⚙️
+                  <Settings className="w-5 h-5" />
                 </Link>
                 <button
                   onClick={handleSignOut}
@@ -228,24 +269,33 @@ export default function Navbar() {
                   <Link
                     href="/messages"
                     onClick={() => setMobileMenuOpen(false)}
-                    className={`block px-3 py-2 rounded-md text-base font-medium transition-colors ${
+                    className={`relative block px-3 py-2 rounded-md text-base font-medium transition-colors ${
                       isActive('/messages')
                         ? 'text-plant-green-600 dark:text-plant-green-400 bg-plant-green-50 dark:bg-plant-green-900/30'
                         : 'text-gray-700 dark:text-gray-300 hover:text-plant-green-600 dark:hover:text-plant-green-400 hover:bg-gray-50 dark:hover:bg-gray-700/50'
                     }`}
                   >
-                    Messages
+                    <div className="flex items-center gap-2">
+                      <Mail className="w-5 h-5" />
+                      <span>Messages</span>
+                      {unreadCount > 0 && (
+                        <span className="bg-red-500 text-white text-xs font-bold rounded-full px-2 py-0.5 min-w-[20px] text-center">
+                          {unreadCount > 99 ? '99+' : unreadCount}
+                        </span>
+                      )}
+                    </div>
                   </Link>
                   <Link
                     href="/settings"
                     onClick={() => setMobileMenuOpen(false)}
-                    className={`block px-3 py-2 rounded-md text-base font-medium transition-colors ${
+                    className={`flex items-center gap-2 px-3 py-2 rounded-md text-base font-medium transition-colors ${
                       isActive('/settings')
                         ? 'text-plant-green-600 dark:text-plant-green-400 bg-plant-green-50 dark:bg-plant-green-900/30'
                         : 'text-gray-700 dark:text-gray-300 hover:text-plant-green-600 dark:hover:text-plant-green-400 hover:bg-gray-50 dark:hover:bg-gray-700/50'
                     }`}
                   >
-                    ⚙️ Settings
+                    <Settings className="w-5 h-5" />
+                    <span>Settings</span>
                   </Link>
                   <button
                     onClick={() => {

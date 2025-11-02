@@ -8,8 +8,8 @@ import Link from 'next/link';
 import LoadingSpinner from '@/components/LoadingSpinner';
 import { SkeletonTradeCard } from '@/components/SkeletonLoader';
 
-// Dynamically import map component to avoid SSR issues
-const MapView = dynamic(() => import('@/components/MapView'), {
+// Dynamically import map wrapper to avoid SSR issues and double initialization
+const MapView = dynamic(() => import('@/components/MapViewWrapper'), {
   ssr: false,
   loading: () => <div className="h-full flex items-center justify-center">Loading map...</div>,
 });
@@ -91,17 +91,18 @@ export default function TradesPage() {
 
     // Filter by search query
     if (searchQuery) {
+      const queryLower = searchQuery.toLowerCase();
       result = result.filter(
         (trade) =>
-          trade.offeredItem.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          trade.requestedItem.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          trade.ownerId.username.toLowerCase().includes(searchQuery.toLowerCase())
+          trade.offeredItem?.toLowerCase().includes(queryLower) ||
+          trade.requestedItem?.toLowerCase().includes(queryLower) ||
+          trade.ownerId?.username?.toLowerCase().includes(queryLower)
       );
     }
 
     // Filter by my trades
     if (showMyTrades && session?.user?.id) {
-      result = result.filter((trade) => trade.ownerId._id === session.user.id);
+      result = result.filter((trade) => trade.ownerId?._id === session.user.id);
     }
 
     // Sort
@@ -183,36 +184,37 @@ export default function TradesPage() {
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, y: -20 }}
-      transition={{ delay: index * 0.05 }}
-      className="bg-white dark:bg-gray-800 rounded-xl shadow-md hover:shadow-lg transition-all p-6 border border-gray-100 dark:border-gray-700"
+      whileHover={{ y: -4, scale: 1.01 }}
+      transition={{ delay: index * 0.05, type: "spring", stiffness: 300 }}
+      className="group bg-white dark:bg-gray-800 rounded-2xl shadow-lg hover:shadow-2xl transition-all duration-300 p-6 border border-gray-100 dark:border-gray-700"
     >
       <div className="flex items-start justify-between mb-4">
         <div className="flex-1">
-          <h3 className="text-xl font-semibold text-plant-green-800 dark:text-plant-green-200 mb-2">
+          <h3 className="text-xl font-bold text-plant-green-800 dark:text-plant-green-200 mb-2 group-hover:text-plant-green-600 dark:group-hover:text-plant-green-400 transition-colors">
             🌱 {trade.offeredItem}
           </h3>
-          <p className="text-gray-600 dark:text-gray-300 mb-2">
+          <p className="text-gray-600 dark:text-gray-300 mb-3">
             Looking for: <span className="font-semibold text-blue-600 dark:text-blue-400">🔍 {trade.requestedItem}</span>
           </p>
           <div className="flex items-center space-x-4 text-sm text-gray-500 dark:text-gray-400 mb-3 flex-wrap gap-2">
             <Link
               href={`/profile/${trade.ownerId._id}`}
-              className="font-semibold text-plant-green-600 dark:text-plant-green-400 hover:underline"
+              className="font-semibold text-plant-green-600 dark:text-plant-green-400 hover:text-plant-green-700 dark:hover:text-plant-green-300 transition-colors"
             >
               👤 {trade.ownerId.username}
             </Link>
-            <span>📍 {trade.locationZip}</span>
+            <span className="flex items-center gap-1">📍 {trade.locationZip}</span>
             {trade.distance !== undefined && (
-              <span className="font-semibold text-orange-600 dark:text-orange-400">
+              <span className="font-semibold text-orange-600 dark:text-orange-400 flex items-center gap-1">
                 📏 {trade.distance.toFixed(1)} mi
               </span>
             )}
-            <span className="text-xs text-gray-400">
+            <span className="text-xs text-gray-400 flex items-center gap-1">
               🕒 {new Date(trade.createdAt).toLocaleDateString()}
             </span>
           </div>
         </div>
-        <span className="px-3 py-1 bg-green-100 dark:bg-green-900 text-green-700 dark:text-green-300 rounded-full text-xs font-semibold">
+        <span className="px-3 py-1.5 bg-gradient-to-r from-green-100 to-emerald-100 dark:from-green-900 dark:to-emerald-900 text-green-700 dark:text-green-300 rounded-xl text-xs font-semibold shadow-sm">
           {trade.status}
         </span>
       </div>
@@ -267,37 +269,43 @@ export default function TradesPage() {
   TradeCard.displayName = 'TradeCard';
 
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="mb-8"
-      >
-        <div className="flex items-center justify-between mb-6">
-          <div>
-            <h1 className="text-4xl font-bold text-plant-green-800 dark:text-plant-green-200 mb-2">
-              Plant Trades 🌿
-            </h1>
-            <p className="text-gray-600 dark:text-gray-300">
-              {filteredTrades.length} {filteredTrades.length === 1 ? 'trade' : 'trades'} available
-            </p>
+    <div className="min-h-screen bg-gradient-to-br from-green-50 via-emerald-50 to-teal-50 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="mb-10"
+        >
+          <div className="flex items-center justify-between mb-8">
+            <div>
+              <h1 className="text-5xl md:text-6xl font-bold text-plant-green-800 dark:text-plant-green-200 mb-2 bg-clip-text text-transparent bg-gradient-to-r from-plant-green-600 to-emerald-500">
+                Plant Trades 🌿
+              </h1>
+              <p className="text-lg text-gray-600 dark:text-gray-300">
+                {filteredTrades.length} {filteredTrades.length === 1 ? 'trade' : 'trades'} available
+              </p>
+            </div>
+            {session && (
+              <Link
+                href="/trades/new"
+                className="px-6 py-3 bg-gradient-to-r from-plant-green-600 to-emerald-500 text-white rounded-xl hover:shadow-lg transition-all font-semibold transform hover:scale-105"
+              >
+                + Create Trade
+              </Link>
+            )}
           </div>
-          {session && (
-            <Link
-              href="/trades/new"
-              className="px-6 py-3 bg-plant-green-600 text-white rounded-lg hover:bg-plant-green-700 transition-colors font-semibold shadow-md hover:shadow-lg"
-            >
-              + Create Trade
-            </Link>
-          )}
-        </div>
 
-        {/* Filters and Controls */}
-        <div className="bg-white dark:bg-gray-800 rounded-xl shadow-md p-6 mb-6">
+          {/* Filters and Controls */}
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.2 }}
+            className="bg-white dark:bg-gray-800 rounded-2xl shadow-lg p-6 mb-8 border border-gray-100 dark:border-gray-700"
+          >
           <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
             {/* Search */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+              <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
                 🔍 Search
               </label>
               <input
@@ -305,13 +313,13 @@ export default function TradesPage() {
                 placeholder="Search plants or users..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-plant-green-500 focus:border-plant-green-500 dark:bg-gray-700 dark:text-white"
+                className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-xl focus:ring-2 focus:ring-plant-green-500 focus:border-plant-green-500 dark:bg-gray-700 dark:text-white transition-all"
               />
             </div>
 
             {/* Zip Code */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+              <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
                 📍 Zip Code
               </label>
               <input
@@ -319,35 +327,39 @@ export default function TradesPage() {
                 placeholder="12345"
                 value={zipCode}
                 onChange={(e) => setZipCode(e.target.value)}
-                className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-plant-green-500 focus:border-plant-green-500 dark:bg-gray-700 dark:text-white"
+                className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-xl focus:ring-2 focus:ring-plant-green-500 focus:border-plant-green-500 dark:bg-gray-700 dark:text-white transition-all"
               />
             </div>
 
             {/* Radius */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                📏 Radius: {radius} miles
+              <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
+                📏 Radius
               </label>
-              <input
-                type="range"
-                min="10"
-                max="200"
-                step="10"
+              <select
                 value={radius}
                 onChange={(e) => setRadius(parseInt(e.target.value))}
-                className="w-full"
-              />
+                className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-xl focus:ring-2 focus:ring-plant-green-500 focus:border-plant-green-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 transition-all"
+              >
+                <option value="10">10 miles</option>
+                <option value="25">25 miles</option>
+                <option value="50">50 miles</option>
+                <option value="75">75 miles</option>
+                <option value="100">100 miles</option>
+                <option value="150">150 miles</option>
+                <option value="200">200 miles</option>
+              </select>
             </div>
 
             {/* Sort */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+              <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
                 🔄 Sort By
               </label>
               <select
                 value={sortBy}
                 onChange={(e) => setSortBy(e.target.value as any)}
-                className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-plant-green-500 focus:border-plant-green-500 dark:bg-gray-700 dark:text-white"
+                className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-xl focus:ring-2 focus:ring-plant-green-500 focus:border-plant-green-500 dark:bg-gray-700 dark:text-white transition-all"
               >
                 <option value="newest">Newest First</option>
                 <option value="oldest">Oldest First</option>
@@ -357,34 +369,40 @@ export default function TradesPage() {
           </div>
 
           {/* Action Buttons */}
-          <div className="flex items-center space-x-3 flex-wrap gap-2">
-            <button
+          <div className="flex items-center space-x-3 flex-wrap gap-2 pt-4 border-t border-gray-100 dark:border-gray-700">
+            <motion.button
               onClick={handleLocationRequest}
-              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-semibold text-sm"
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
+              className="px-4 py-2 bg-gradient-to-r from-blue-600 to-cyan-500 text-white rounded-xl hover:shadow-lg transition-all font-semibold text-sm"
             >
               📍 Use My Location
-            </button>
+            </motion.button>
             {session && (
-              <button
+              <motion.button
                 onClick={() => setShowMyTrades(!showMyTrades)}
-                className={`px-4 py-2 rounded-lg transition-colors font-semibold text-sm ${
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
+                className={`px-4 py-2 rounded-xl transition-all font-semibold text-sm ${
                   showMyTrades
-                    ? 'bg-plant-green-600 text-white hover:bg-plant-green-700'
+                    ? 'bg-gradient-to-r from-plant-green-600 to-emerald-500 text-white shadow-lg'
                     : 'bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-300 dark:hover:bg-gray-600'
                 }`}
               >
                 {showMyTrades ? '✓ My Trades Only' : 'Show My Trades'}
-              </button>
+              </motion.button>
             )}
-            <button
+            <motion.button
               onClick={() => setViewMode(viewMode === 'list' ? 'map' : 'list')}
-              className="px-4 py-2 bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors font-semibold text-sm"
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
+              className="px-4 py-2 bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-xl hover:bg-gray-300 dark:hover:bg-gray-600 transition-all font-semibold text-sm"
             >
               {viewMode === 'list' ? '🗺️ Map View' : '📋 List View'}
-            </button>
+            </motion.button>
           </div>
-        </div>
-      </motion.div>
+          </motion.div>
+        </motion.div>
 
       {loading ? (
         <div className="grid md:grid-cols-2 gap-6">
@@ -397,9 +415,9 @@ export default function TradesPage() {
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
-            className="text-center py-16 bg-white dark:bg-gray-800 rounded-xl shadow-md"
+            className="text-center py-16 bg-white dark:bg-gray-800 rounded-2xl shadow-lg border border-gray-100 dark:border-gray-700"
           >
-            <span className="text-6xl mb-4 block">🌱</span>
+            <span className="text-7xl mb-4 block">🌱</span>
             <p className="text-gray-600 dark:text-gray-300 text-lg font-medium mb-2">
               {searchQuery || showMyTrades ? 'No matching trades found' : 'No trades available'}
             </p>
@@ -417,10 +435,11 @@ export default function TradesPage() {
           </AnimatePresence>
         )
       ) : (
-        <div className="h-[600px] bg-white dark:bg-gray-800 rounded-xl shadow-md overflow-hidden">
+        <div className="h-[600px] bg-white dark:bg-gray-800 rounded-2xl shadow-lg overflow-hidden border border-gray-100 dark:border-gray-700">
           <MapView trades={filteredTrades} userLocation={userLocation} />
         </div>
       )}
+      </div>
     </div>
   );
 }
